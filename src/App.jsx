@@ -1948,8 +1948,8 @@ export default function App() {
       className={"nv" + (v.n === n ? " on" : "")}
       onClick={() => (n === "fx" ? toggleFx() : nav(n))}
     >
-      {icon}
-      <span>{label}</span>
+      <span className="nav-icon" aria-hidden="true">{icon}</span>
+      <span className="nav-label">{label}</span>
     </div>
   );
   return (
