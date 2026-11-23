@@ -38,3 +38,13 @@ The Bollywood tab and the main Search page both query the JioSaavn-compatible AP
 - Gaana integration uses the unofficial public API documented at https://github.com/shnwazdev/shnwazdev-GaanaAPI. It does not require an API key, but upstream availability and regional access are not guaranteed.
 - Gaana stream links may be HLS (`.m3u8`). Native HLS playback depends on browser support; this project does not bundle an HLS playback library. If a browser cannot play a returned HLS URL, the song may appear in search but playback can fail.
 - Only stream or reuse music where you have the appropriate rights. The API repository's MIT license does not grant rights to Gaana's music catalog.
+
+## Google sign-in on mobile localhost
+
+Mobile browsers block Firebase's popup sign-in, so local development uses the redirect flow over HTTPS. The Vite server uses a certificate in `.local-certs/` when present; otherwise it creates a temporary self-signed certificate. To make the browser trust the local certificate, import `.local-certs/ca-cert.pem` into your local login keychain and mark it trusted, then restart `npm run dev` and open `https://localhost:5173` on the same device. For a phone, `localhost` refers to the phone itself; use a trusted HTTPS tunnel or a LAN hostname with a matching certificate to test on a separate device.
+
+The Vite server proxies Firebase's `/__/auth` and `/__/firebase` helper paths to the configured `VITE_FIREBASE_AUTH_DOMAIN`. Add this exact URI to the Google OAuth web client's **Authorized redirect URIs**:
+
+```
+https://localhost:5173/__/auth/handler
+```
