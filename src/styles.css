@@ -838,7 +838,8 @@ input[type="range"]::-moz-range-thumb {
 .sheet {
   position: fixed;
   inset: 0;
-  z-index: 30;
+  /* Keep Now Playing above the app shell, dropdown scrims, queue, and player. */
+  z-index: 90;
   background: linear-gradient(180deg, var(--c1, #333), var(--bg) 72%);
   overflow-y: auto;
   overscroll-behavior: contain;

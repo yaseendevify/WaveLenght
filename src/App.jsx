@@ -387,7 +387,7 @@ const readLocal = () => {
   }
 };
 
-function Auth({ onGuest }) {
+function Auth({ onGuest, redirectError = "" }) {
   const [em, setEm] = useState(""),
     [pw, setPw] = useState(""),
     [err, setErr] = useState("");
@@ -431,7 +431,7 @@ function Auth({ onGuest }) {
           <button className="pill" onClick={() => run(fb.google)}>
             Continue with Google
           </button>
-          {err && <div className="err">{err}</div>}
+          {(err || redirectError) && <div className="err">{err || redirectError}</div>}
         </>
       ) : (
         <div className="empty">
@@ -510,6 +510,7 @@ function Row({ id, i, list, c }) {
 export default function App() {
   const [user, setUser] = useState(undefined),
     [guest, setGuest] = useState(false),
+    [authError, setAuthError] = useState(""),
     [ready, setReady] = useState(false);
   const [d, setD] = useState(readLocal),
     [local, setLocal] = useState([]);
@@ -972,6 +973,13 @@ export default function App() {
   /* effects */
   useEffect(() => {
     E.setVol(vol);
+    fb.googleRedirectResult().catch((e) => {
+      setAuthError(
+        String(e.code || e.message)
+          .replace("auth/", "")
+          .replace(/-/g, " "),
+      );
+    });
     const un = fb.onUser(setUser);
     allFiles().then((rs) => {
       if (!Array.isArray(rs)) return;
@@ -1350,7 +1358,7 @@ export default function App() {
   }, [d.fx]);
 
   if (user === undefined) return null;
-  if (!user && !guest) return <Auth onGuest={() => setGuest(true)} />;
+  if (!user && !guest) return <Auth onGuest={() => setGuest(true)} redirectError={authError} />;
 
   /* views */
   const rows = (ids, key) =>
