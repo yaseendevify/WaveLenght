@@ -479,7 +479,8 @@ export default function App() {
     mainRef = useRef(),
     drag = useRef(false),
     tm = useRef(),
-    sv = useRef();
+    sv = useRef(),
+    endedHandled = useRef(false);
   const liked = new Set(d.liked || []),
     rep = d.rep || "off",
     shuf = !!d.shuf,
@@ -573,6 +574,7 @@ export default function App() {
       return;
     }
     const ok = await E.play(t, 0, getBlob);
+    if (ok) endedHandled.current = false;
     if (ok === false) {
       tl("Could not play this file");
       return;
@@ -599,7 +601,12 @@ export default function App() {
     let i = q.i + 1;
     if (i >= q.ids.length) {
       if (rep === "all" || !auto) i = 0;
-      else return go(q.ids[0], { ...q, i: 0 }, false);
+      else {
+        setPlaying(false);
+        E.pause();
+        setPos(E.dur());
+        return;
+      }
     }
     go(q.ids[i], { ...q, i });
   };
@@ -619,6 +626,8 @@ export default function App() {
     if (playing) {
       E.pause();
       setPlaying(false);
+    } else if (E.ended()) {
+      go(cur.id, q);
     } else {
       E.resume();
       setPlaying(true);
@@ -779,7 +788,10 @@ export default function App() {
       if (!r.cur) return;
       if (!drag.current) setPos(E.pos());
       setDur(E.dur());
-      if (r.playing && E.ended()) r.next(true);
+      if (r.playing && E.ended() && !endedHandled.current) {
+        endedHandled.current = true;
+        r.next(true);
+      }
     }, 250);
     return () => clearInterval(h);
   }, []);
