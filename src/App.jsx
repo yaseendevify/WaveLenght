@@ -58,6 +58,7 @@ const jamSearch = async (p) => {
         url: x.audio || x.audiodownload,
         dur: +x.duration || 0,
         img: x.image,
+        artistImg: x.artist_image || x.artistImage || "",
         hue: +x.id % 360,
       };
       return id;
@@ -92,6 +93,10 @@ const audGet = async (path, p = {}) => {
           (x.artwork["480x480"] ||
             x.artwork["150x150"] ||
             x.artwork["1000x1000"]),
+        artistImg:
+          x.user?.profile_picture?.["480x480"] ||
+          x.user?.profile_picture?.["150x150"] ||
+          "",
         hue: [...String(x.id)].reduce((a, c) => a + c.charCodeAt(0), 0) % 360,
       };
       return id;
@@ -138,6 +143,7 @@ const saavnSearchSongs = async (query, page = 0) => {
       url: bestAudio || "",
       dur: Number(x.duration) || 0,
       img: bestImage || "",
+      artistImg: bestImage || "",
       hue: [...String(x.id)].reduce((a, c) => a + c.charCodeAt(0), 0) % 360,
       album: x.album?.name || "",
       sourceUrl: x.url || "",
@@ -188,6 +194,7 @@ const gaanaSearchSongs = async (query) => {
           Number(x.duration_seconds) ||
           (Number.isFinite(Number(x.duration)) ? Number(x.duration) : 0),
         img: x.thumb || x.image || x.artwork || x.album_art || "",
+        artistImg: x.artist_image || x.artistImage || x.artist_img || "",
         hue: [...String(id)].reduce((a, c) => a + c.charCodeAt(0), 0) % 360,
         album: x.album || x.album_title || "",
         seokey: key,
@@ -1252,6 +1259,17 @@ export default function App() {
       </div>
     );
   };
+  const artistPicks = (() => {
+    const seen = new Set();
+    return hm.shelves.flatMap((shelf) => shelf.ids).filter((id) => {
+      const track = T[id];
+      const artist = (track?.artist || "").trim();
+      const key = artist.toLowerCase();
+      if (!artist || key === "unknown" || key === "unknown artist" || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    }).slice(0, 18).map((id) => ({ id, artist: T[id].artist }));
+  })();
   const ls = d.ls || "recents",
     lv = d.lv || "list",
     rpl = d.rp || [],
@@ -1288,6 +1306,37 @@ export default function App() {
             );
           })}
         </div>
+        {artistPicks.length > 0 && (
+          <section className="artist-section">
+            <div className="hhead">
+              <h2>Popular artists</h2>
+              <span className="artist-note">Discover your next favourite</span>
+            </div>
+            <div className="artist-shelf">
+              {artistPicks.map(({ id, artist }) => {
+                const track = T[id];
+                return (
+                  <button
+                    type="button"
+                    className="artist-card"
+                    key={artist.toLowerCase()}
+                    onClick={() => play([id], id)}
+                    title={"Play a track by " + artist}
+                  >
+                    <span
+                      className="artist-art"
+                      style={bg({ ...track, img: track.artistImg || track.img })}
+                    >
+                      <span className="artist-play">▶</span>
+                    </span>
+                    <b>{artist}</b>
+                    <small>Artist</small>
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+        )}
         {hm.shelves
           .filter((x) => x.ids.length)
           .map((sh) => (
