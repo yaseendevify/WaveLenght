@@ -642,10 +642,22 @@ export default function App() {
       tl("Playlist updated");
     } else {
       const id = "p_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
-      const item = { id, name, description: playlistForm.description.trim(), cover: playlistForm.cover.trim(), isPublic: !!playlistForm.isPublic, tracks: [], trackData: [], createdAt: Date.now(), updatedAt: Date.now() };
+      const track = playlistPicker ? T[playlistPicker] : null;
+      const item = {
+        id, name, description: playlistForm.description.trim(),
+        cover: playlistForm.cover.trim(), isPublic: !!playlistForm.isPublic,
+        tracks: track ? [track.id] : [],
+        trackData: track ? [{
+          id: track.id, title: track.title, artist: track.artist, g: track.g,
+          url: track.url || "", dur: track.dur || 0, img: track.img || "",
+          artistImg: track.artistImg || "", hue: track.hue || 0, album: track.album || "",
+        }] : [],
+        createdAt: Date.now(), updatedAt: Date.now(),
+      };
       setD((x) => ({ ...x, playlists: [item, ...(x.playlists || [])] }));
+      setPlaylistPicker(null);
       nav("pl", id);
-      tl("Playlist created");
+      tl(track ? "Playlist created and song added" : "Playlist created");
     }
     setPlaylistForm(null);
   };
@@ -658,8 +670,8 @@ export default function App() {
   };
   const addToPlaylist = (id) => {
     if (!playlists.length) {
+      setPlaylistPicker(id);
       setPlaylistForm({ mode: "create", name: "", description: "", cover: "", isPublic: false });
-      tl("Create a playlist to add this song");
       return;
     }
     setPlaylistPicker(id);
