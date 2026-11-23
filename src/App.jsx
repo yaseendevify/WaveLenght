@@ -107,20 +107,29 @@ const saavnSearchSongs = async (query, page = 0) => {
   const r = await fetch(u);
   if (!r.ok) throw new Error("JioSaavn search failed (" + r.status + ")");
   const j = await r.json();
-  if (j.success === false) throw new Error(j.message || "JioSaavn request failed");
+  if (j.success === false)
+    throw new Error(j.message || "JioSaavn request failed");
   return (j.data?.results || []).map((x) => {
     const id = "s" + x.id;
     const images = Array.isArray(x.image) ? x.image : [];
     const audio = Array.isArray(x.downloadUrl) ? x.downloadUrl : [];
-    const bestAudio = [...audio].sort((a, b) =>
-      parseInt(b.quality || "0", 10) - parseInt(a.quality || "0", 10),
+    const bestAudio = [...audio].sort(
+      (a, b) => parseInt(b.quality || "0", 10) - parseInt(a.quality || "0", 10),
     )[0]?.url;
-    const bestImage = [...images].sort((a, b) =>
-      parseInt(b.quality || "0", 10) - parseInt(a.quality || "0", 10),
+    const bestImage = [...images].sort(
+      (a, b) => parseInt(b.quality || "0", 10) - parseInt(a.quality || "0", 10),
     )[0]?.url;
-    const artist = x.artists?.primary?.map((a) => a.name).filter(Boolean).join(", ")
-      || x.artists?.all?.map((a) => a.name).filter(Boolean).join(", ")
-      || x.album?.name || "Unknown artist";
+    const artist =
+      x.artists?.primary
+        ?.map((a) => a.name)
+        .filter(Boolean)
+        .join(", ") ||
+      x.artists?.all
+        ?.map((a) => a.name)
+        .filter(Boolean)
+        .join(", ") ||
+      x.album?.name ||
+      "Unknown artist";
     T[id] = T[id] || {
       id,
       title: x.name || "Unknown title",
@@ -145,24 +154,47 @@ const gaanaSearchSongs = async (query) => {
   const r = await fetch(u);
   if (!r.ok) throw new Error("Gaana search failed (" + r.status + ")");
   const j = await r.json();
-  if (j.status === false || j.success === false) throw new Error(j.message || "Gaana search failed");
-  const list = Array.isArray(j) ? j : (j.results || j.data?.results || j.data || j.songs || []);
-  return list.filter((x) => x && typeof x === "object").map((x) => {
-    const key = x.seokey || x.seo_key || x.slug || (x.gaana_url || x.url || "").split("/").filter(Boolean).pop();
-    const id = "g" + (x.id || key || encodeURIComponent(x.title || x.name || Math.random()));
-    const title = x.title || x.name || x.track_title || "Unknown title";
-    const artist = x.artist || x.artist_name || x.singer || x.primary_artist || "Unknown artist";
-    const direct = x.link || x.stream_url || x.audio_url || x.audio || "";
-    T[id] = T[id] || {
-      id, title, artist, g: "gaana", url: direct,
-      dur: Number(x.duration_seconds) || (Number.isFinite(Number(x.duration)) ? Number(x.duration) : 0),
-      img: x.thumb || x.image || x.artwork || x.album_art || "",
-      hue: [...String(id)].reduce((a, c) => a + c.charCodeAt(0), 0) % 360,
-      album: x.album || x.album_title || "", seokey: key,
-      sourceUrl: x.gaana_url || x.url || "",
-    };
-    return id;
-  });
+  if (j.status === false || j.success === false)
+    throw new Error(j.message || "Gaana search failed");
+  const list = Array.isArray(j)
+    ? j
+    : j.results || j.data?.results || j.data || j.songs || [];
+  return list
+    .filter((x) => x && typeof x === "object")
+    .map((x) => {
+      const key =
+        x.seokey ||
+        x.seo_key ||
+        x.slug ||
+        (x.gaana_url || x.url || "").split("/").filter(Boolean).pop();
+      const id =
+        "g" +
+        (x.id || key || encodeURIComponent(x.title || x.name || Math.random()));
+      const title = x.title || x.name || x.track_title || "Unknown title";
+      const artist =
+        x.artist ||
+        x.artist_name ||
+        x.singer ||
+        x.primary_artist ||
+        "Unknown artist";
+      const direct = x.link || x.stream_url || x.audio_url || x.audio || "";
+      T[id] = T[id] || {
+        id,
+        title,
+        artist,
+        g: "gaana",
+        url: direct,
+        dur:
+          Number(x.duration_seconds) ||
+          (Number.isFinite(Number(x.duration)) ? Number(x.duration) : 0),
+        img: x.thumb || x.image || x.artwork || x.album_art || "",
+        hue: [...String(id)].reduce((a, c) => a + c.charCodeAt(0), 0) % 360,
+        album: x.album || x.album_title || "",
+        seokey: key,
+        sourceUrl: x.gaana_url || x.url || "",
+      };
+      return id;
+    });
 };
 const resolveGaanaStream = async (track) => {
   if (track.url) return track;
@@ -176,7 +208,7 @@ const resolveGaanaStream = async (track) => {
   if (url) track.url = url;
   return track;
 };
-YouTube API helpersconst perArtist = (ids, n) => {
+const perArtist = (ids, n) => {
   const c = {};
   return ids.filter((id) => {
     const a = ((T[id] && T[id].artist) || id).toLowerCase().trim();
@@ -429,16 +461,43 @@ export default function App() {
     sp = d.sp || [];
   (d.jam || []).forEach((j) => {
     if (!T[j.id])
-      T[j.id] = { ...j, g: String(j.id)[0] === "a" ? "audius" : String(j.id)[0] === "s" ? "saavn" : String(j.id)[0] === "g" ? "gaana" : "jamendo" };
+      T[j.id] = {
+        ...j,
+        g:
+          String(j.id)[0] === "a"
+            ? "audius"
+            : String(j.id)[0] === "s"
+              ? "saavn"
+              : String(j.id)[0] === "g"
+                ? "gaana"
+                : "jamendo",
+      };
   });
   (d.hist || []).forEach((h) => {
     if (h.url && !T[h.id])
-      T[h.id] = { ...h, g: String(h.id)[0] === "a" ? "audius" : String(h.id)[0] === "s" ? "saavn" : String(h.id)[0] === "g" ? "gaana" : "jamendo" };
+      T[h.id] = {
+        ...h,
+        g:
+          String(h.id)[0] === "a"
+            ? "audius"
+            : String(h.id)[0] === "s"
+              ? "saavn"
+              : String(h.id)[0] === "g"
+                ? "gaana"
+                : "jamendo",
+      };
   });
   const [dc, setDc] = useState({ shelves: [], busy: false, err: "" }),
     [dq, setDq] = useState(""),
     [dtag, setDtag] = useState(""),
-    [sr, setSr] = useState({ ids: [], aids: [], saavn: [], gaana: [], busy: false, err: "" }),
+    [sr, setSr] = useState({
+      ids: [],
+      aids: [],
+      saavn: [],
+      gaana: [],
+      busy: false,
+      err: "",
+    }),
     [bq, setBq] = useState(""),
     [br, setBr] = useState({ ids: [], busy: false, err: "" });
   const tl = (m) => {
@@ -457,11 +516,7 @@ export default function App() {
   const allIds = () =>
     Object.keys(T).filter((id) => !T[id].url || liked.has(id));
   const idsOf = (k) =>
-    k === "liked"
-      ? [...liked].filter((x) => T[x])
-      : k === "local"
-        ? local
-        : [];
+    k === "liked" ? [...liked].filter((x) => T[x]) : k === "local" ? local : [];
   const meta = (k) =>
     k === "liked"
       ? { name: "Liked Songs", desc: "Songs you’ve hearted", hue: 280 }
@@ -473,8 +528,12 @@ export default function App() {
   const go = async (id, nq, auto = true) => {
     let t = T[id];
     if (t && t.g === "gaana" && !t.url) {
-      try { t = await resolveGaanaStream(t); T[id] = t; }
-      catch (e) { tl(String(e.message || e)); }
+      try {
+        t = await resolveGaanaStream(t);
+        T[id] = t;
+      } catch (e) {
+        tl(String(e.message || e));
+      }
     }
     setYtCur(null);
     setCur(t);
@@ -581,7 +640,11 @@ export default function App() {
         on = s.has(id);
       on ? s.delete(id) : s.add(id);
       const jam = (x.jam || []).filter((j) => j.id !== id);
-      if (!on && t && (t.g === "jamendo" || t.g === "audius" || t.g === "saavn"))
+      if (
+        !on &&
+        t &&
+        (t.g === "jamendo" || t.g === "audius" || t.g === "saavn")
+      )
         jam.push({
           id,
           title: t.title,
@@ -863,7 +926,10 @@ export default function App() {
               gaana: d.status === "fulfilled" ? d.value : [],
               busy: false,
               err:
-                a.status === "rejected" && b.status === "rejected" && c.status === "rejected" && d.status === "rejected"
+                a.status === "rejected" &&
+                b.status === "rejected" &&
+                c.status === "rejected" &&
+                d.status === "rejected"
                   ? String((c.reason && c.reason.message) || c.reason)
                   : "",
             }),
@@ -881,24 +947,49 @@ export default function App() {
     const query = bq.trim() || "Bollywood";
     let dead = false;
     setBr((x) => ({ ...x, busy: true, err: "" }));
-    const h = setTimeout(() => {
-      Promise.allSettled([saavnSearchSongs(query), gaanaSearchSongs(query)]).then(([saavn, gaana]) => {
-        if (dead) return;
-        const ids = [...(saavn.status === "fulfilled" ? saavn.value : []), ...(gaana.status === "fulfilled" ? gaana.value : [])];
-        const seen = new Set();
-        const unique = ids.filter((id) => {
-          const t = T[id];
-          const key = (t.title + "|" + t.artist).toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
-          if (seen.has(key)) return false;
-          seen.add(key); return true;
+    const h = setTimeout(
+      () => {
+        Promise.allSettled([
+          saavnSearchSongs(query),
+          gaanaSearchSongs(query),
+        ]).then(([saavn, gaana]) => {
+          if (dead) return;
+          const ids = [
+            ...(saavn.status === "fulfilled" ? saavn.value : []),
+            ...(gaana.status === "fulfilled" ? gaana.value : []),
+          ];
+          const seen = new Set();
+          const unique = ids.filter((id) => {
+            const t = T[id];
+            const key = (t.title + "|" + t.artist)
+              .toLowerCase()
+              .replace(/[^a-z0-9]+/g, " ")
+              .trim();
+            if (seen.has(key)) return false;
+            seen.add(key);
+            return true;
+          });
+          setBr({
+            ids: unique,
+            busy: false,
+            err: unique.length
+              ? ""
+              : String(
+                  (saavn.reason || gaana.reason || {}).message ||
+                    "No results from music sources",
+                ),
+          });
         });
-        setBr({ ids: unique, busy: false, err: unique.length ? "" : String((saavn.reason || gaana.reason || {}).message || "No results from music sources") });
-      });
-    }, bq.trim() ? 350 : 0);
-    return () => { dead = true; clearTimeout(h); };
+      },
+      bq.trim() ? 350 : 0,
+    );
+    return () => {
+      dead = true;
+      clearTimeout(h);
+    };
   }, [v.n, bq]);
 
-YouTube search and chart effects  const ty = useRef({ y: 0, top: 0 }),
+  const ty = useRef({ y: 0, top: 0 }),
     pv = useRef({ n: "home" });
   useEffect(() => {
     if (v.n !== "home" || hm.loaded) return;
@@ -1175,7 +1266,12 @@ YouTube search and chart effects  const ty = useRef({ y: 0, top: 0 }),
     );
   else if (v.n === "search") {
     const s = sq.trim().toLowerCase(),
-      jset = new Set([...sr.ids, ...sr.aids, ...(sr.saavn || []), ...(sr.gaana || [])]);
+      jset = new Set([
+        ...sr.ids,
+        ...sr.aids,
+        ...(sr.saavn || []),
+        ...(sr.gaana || []),
+      ]);
     const res = s
       ? allIds().filter(
           (id) =>
@@ -1210,10 +1306,18 @@ YouTube search and chart effects  const ty = useRef({ y: 0, top: 0 }),
                 ) : (sr.saavn || []).length ? (
                   rows(sr.saavn, "saavn-search-")
                 ) : (
-                  <div className="empty">No Bollywood songs found for “{sq}”.</div>
+                  <div className="empty">
+                    No Bollywood songs found for “{sq}”.
+                  </div>
                 )}
                 <h2>From Gaana</h2>
-                {sr.busy && !(sr.gaana || []).length ? <div className="empty">Searching Gaana…</div> : (sr.gaana || []).length ? rows(sr.gaana, "gaana-search-") : <div className="empty">No Gaana results for “{sq}”.</div>}
+                {sr.busy && !(sr.gaana || []).length ? (
+                  <div className="empty">Searching Gaana…</div>
+                ) : (sr.gaana || []).length ? (
+                  rows(sr.gaana, "gaana-search-")
+                ) : (
+                  <div className="empty">No Gaana results for “{sq}”.</div>
+                )}
                 {JKEY && (
                   <>
                     <h2>From Jamendo</h2>
@@ -1272,7 +1376,9 @@ YouTube search and chart effects  const ty = useRef({ y: 0, top: 0 }),
         <div className="hhead">
           <div>
             <h2>Bollywood</h2>
-            <div className="empty" style={{ padding: "0 0 12px" }}>Explore Hindi film music across JioSaavn and Gaana catalogs.</div>
+            <div className="empty" style={{ padding: "0 0 12px" }}>
+              Explore Hindi film music across JioSaavn and Gaana catalogs.
+            </div>
           </div>
         </div>
         <div className="sbox">
@@ -1282,18 +1388,42 @@ YouTube search and chart effects  const ty = useRef({ y: 0, top: 0 }),
             value={bq}
             onChange={(e) => setBq(e.target.value)}
           />
-          {bq && <button className="ib" onClick={() => setBq("")}>×</button>}
+          {bq && (
+            <button className="ib" onClick={() => setBq("")}>
+              ×
+            </button>
+          )}
         </div>
         <div className="chips" style={{ margin: "12px 0 18px" }}>
-          {["Arijit Singh", "Shreya Ghoshal", "90s Bollywood", "Romantic Hindi", "Atif Aslam"].map((term) => (
-            <button key={term} className="chip" onClick={() => setBq(term)}>{term}</button>
+          {[
+            "Arijit Singh",
+            "Shreya Ghoshal",
+            "90s Bollywood",
+            "Romantic Hindi",
+            "Atif Aslam",
+          ].map((term) => (
+            <button key={term} className="chip" onClick={() => setBq(term)}>
+              {term}
+            </button>
           ))}
         </div>
         {br.err ? <div className="err">{br.err}</div> : null}
-        {br.busy && !br.ids.length ? <div className="empty">Loading Bollywood songs…</div> : null}
-        {!br.busy && !br.ids.length && !br.err ? <div className="empty">No songs found. Try another search.</div> : null}
-        {br.ids.length > 0 && <>{bq.trim() ? <h2>Search results</h2> : <h2>Bollywood songs</h2>}{rows(br.ids, "bolly-")}</>}
-        <div className="empty" style={{ paddingTop: 16 }}>Results combine JioSaavn and Gaana. Stream availability depends on each catalog and regional access.</div>
+        {br.busy && !br.ids.length ? (
+          <div className="empty">Loading Bollywood songs…</div>
+        ) : null}
+        {!br.busy && !br.ids.length && !br.err ? (
+          <div className="empty">No songs found. Try another search.</div>
+        ) : null}
+        {br.ids.length > 0 && (
+          <>
+            {bq.trim() ? <h2>Search results</h2> : <h2>Bollywood songs</h2>}
+            {rows(br.ids, "bolly-")}
+          </>
+        )}
+        <div className="empty" style={{ paddingTop: 16 }}>
+          Results combine JioSaavn and Gaana. Stream availability depends on
+          each catalog and regional access.
+        </div>
       </>
     );
   } else if (v.n === "disc") {
