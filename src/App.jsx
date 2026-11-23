@@ -145,8 +145,15 @@ const saavnRequest = async (path, params = {}) => {
   if (j.success === false) throw new Error(j.message || "JioSaavn request failed");
   return j.data ?? j;
 };
-const saavnList = (data) =>
-  Array.isArray(data) ? data : data?.results || data?.songs || data?.topSongs || [];
+const saavnList = (data) => {
+  if (Array.isArray(data)) return data;
+  if (!data || typeof data !== "object") return [];
+  const candidate =
+    data.results || data.songs || data.topSongs ||
+    data.data?.results || data.data?.songs || data.data || [];
+  if (Array.isArray(candidate)) return candidate;
+  return candidate && candidate !== data ? saavnList(candidate) : [];
+};
 const saavnSearchSongs = async (query, page = 0) => {
   const data = await saavnRequest("/api/search/songs", { query, page, limit: 20 });
   return saavnList(data).map(mapSaavnSong);
@@ -1042,7 +1049,8 @@ export default function App() {
       ]).then(([artistResult, songsResult, albumsResult]) => {
         if (dead) return;
         const artistData = artistResult.status === "fulfilled" ? artistResult.value : null;
-        const artist = Array.isArray(artistData) ? artistData[0] : artistData;
+        const artistPayload = artistData?.artist || artistData?.data?.artist || artistData;
+        const artist = Array.isArray(artistPayload) ? artistPayload[0] : artistPayload;
         const songData = songsResult.status === "fulfilled" ? songsResult.value : [];
         const albumData = albumsResult.status === "fulfilled" ? albumsResult.value : [];
         const songs = saavnList(songData).map(mapSaavnSong);
@@ -1069,8 +1077,9 @@ export default function App() {
     } else {
       saavnRequest("/api/albums", { id }).then((data) => {
         if (dead) return;
-        const album = Array.isArray(data) ? data[0] : data;
-        const songs = saavnList(album?.songs || album?.tracks || album).map(mapSaavnSong);
+        const albumPayload = data?.album || data?.data?.album || data;
+        const album = Array.isArray(albumPayload) ? albumPayload[0] : albumPayload;
+        const songs = saavnList(album?.songs || album?.tracks || data?.songs || []).map(mapSaavnSong);
         setDetail({
           busy: false,
           err: "",
