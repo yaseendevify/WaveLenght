@@ -1334,6 +1334,36 @@ export default function App() {
             );
           })}
         </div>
+        {hm.shelves
+          .filter((x) => x.ids.length)
+          .map((sh) => (
+            <div key={sh.t}>
+              <div className="hhead shelf-heading">
+                <h2>{sh.t}</h2>
+              </div>
+              <div className="shelf-wrap">
+                <button
+                  type="button"
+                  className="shelf-arrow shelf-arrow-left"
+                  aria-label={"Scroll " + sh.t + " left"}
+                  title="Scroll left"
+                  onClick={(event) => scrollShelf(event, -1)}
+                >
+                  ‹
+                </button>
+                <div className="shelf">{sh.ids.map((id) => tc(id, sh.ids))}</div>
+                <button
+                  type="button"
+                  className="shelf-arrow shelf-arrow-right"
+                  aria-label={"Scroll " + sh.t + " right"}
+                  title="Scroll right"
+                  onClick={(event) => scrollShelf(event, 1)}
+                >
+                  ›
+                </button>
+              </div>
+            </div>
+          ))}
         {artistPicks.length > 0 && (
           <section className="artist-section">
             <div className="hhead">
@@ -1385,36 +1415,6 @@ export default function App() {
             </div>
           </section>
         )}
-        {hm.shelves
-          .filter((x) => x.ids.length)
-          .map((sh) => (
-            <div key={sh.t}>
-              <div className="hhead shelf-heading">
-                <h2>{sh.t}</h2>
-              </div>
-              <div className="shelf-wrap">
-                <button
-                  type="button"
-                  className="shelf-arrow shelf-arrow-left"
-                  aria-label={"Scroll " + sh.t + " left"}
-                  title="Scroll left"
-                  onClick={(event) => scrollShelf(event, -1)}
-                >
-                  ‹
-                </button>
-                <div className="shelf">{sh.ids.map((id) => tc(id, sh.ids))}</div>
-                <button
-                  type="button"
-                  className="shelf-arrow shelf-arrow-right"
-                  aria-label={"Scroll " + sh.t + " right"}
-                  title="Scroll right"
-                  onClick={(event) => scrollShelf(event, 1)}
-                >
-                  ›
-                </button>
-              </div>
-            </div>
-          ))}
         <h2>Your library</h2>
         <div className="shelf">
           {plKeys.map((k) => (
