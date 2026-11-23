@@ -242,7 +242,12 @@ const homeSearch = async (query, artistMatch) => {
     result.status === "fulfilled" ? result.value : [],
   );
   return artistMatch
-    ? ids.filter((id) => (T[id]?.artist || "").toLowerCase().includes(artistMatch))
+    ? ids.filter((id) =>
+        (T[id]?.artist || "")
+          .toLowerCase()
+          .replace(/[^a-z0-9]/g, "")
+          .includes(artistMatch),
+      )
     : ids;
 };
 const homeJobs = () => [
