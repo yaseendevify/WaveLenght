@@ -176,60 +176,7 @@ const resolveGaanaStream = async (track) => {
   if (url) track.url = url;
   return track;
 };
-const YKEY = import.meta.env.VITE_YOUTUBE_API_KEY;
-const ytParse = (x) => {
-  x = x.trim();
-  const v = x.match(
-    /(?:youtu\.be\/|[?&]v=|\/shorts\/|\/embed\/|\/live\/)([\w-]{11})/,
-  );
-  if (v) return { k: "v", id: v[1] };
-  const l = x.match(/[?&]list=([\w-]+)/);
-  return l && /youtube\.com/.test(x) ? { k: "p", id: l[1] } : null;
-};
-const YSRV = import.meta.env.VITE_YTMUSIC_URL || "http://localhost:5174";
-const dec = (s) => {
-  const t = document.createElement("textarea");
-  t.innerHTML = s;
-  return t.value;
-};
-const ytSearch = async (q) => {
-  try {
-    const r = await fetch(YSRV + "/api/search?q=" + encodeURIComponent(q));
-    const j = await r.json();
-    if (!r.ok || j.error) throw new Error(j.error || "server error");
-    return j.map((x) => ({
-      k: "v",
-      id: x.videoId,
-      title: x.title,
-      ch: x.artist,
-      img: x.thumb,
-    }));
-  } catch (e) {
-    if (!YKEY)
-      throw new Error(
-        "Search server chal nahi raha. Terminal mein server.py wale folder mein ye chalayein: python server.py",
-      );
-    const u = new URL("https://www.googleapis.com/youtube/v3/search");
-    Object.entries({
-      part: "snippet",
-      type: "video",
-      videoEmbeddable: "true",
-      videoCategoryId: "10",
-      maxResults: 12,
-      q,
-      key: YKEY,
-    }).forEach(([a, b]) => u.searchParams.set(a, b));
-    const j = await (await fetch(u)).json();
-    if (j.error) throw new Error(j.error.message);
-    return (j.items || []).map((i) => ({
-      k: "v",
-      id: i.id.videoId,
-      title: dec(i.snippet.title),
-      ch: dec(i.snippet.channelTitle),
-    }));
-  }
-};
-const perArtist = (ids, n) => {
+YouTube API helpersconst perArtist = (ids, n) => {
   const c = {};
   return ids.filter((id) => {
     const a = ((T[id] && T[id].artist) || id).toLowerCase().trim();
@@ -456,12 +403,6 @@ export default function App() {
   const [v, setV] = useState({ n: "home" }),
     [sq, setSq] = useState(""),
     [spIn, setSpIn] = useState(""),
-    [ytIn, setYtIn] = useState(""),
-    [ytq, setYtq] = useState(""),
-    [ytSub, setYtSub] = useState(""),
-    [ytr, setYtr] = useState({ items: [], busy: false, err: "" }),
-    [ytCur, setYtCur] = useState(null),
-    [ytCh, setYtCh] = useState(null),
     [npOpen, setNpOpen] = useState(false),
     [lq, setLq] = useState(""),
     [lsOpen, setLsOpen] = useState(false),
@@ -957,53 +898,7 @@ export default function App() {
     return () => { dead = true; clearTimeout(h); };
   }, [v.n, bq]);
 
-  useEffect(() => {
-    if (v.n !== "yt") return;
-    const q = ytSub.trim();
-    if (!q) {
-      setYtr({ items: [], busy: false, err: "" });
-      return;
-    }
-    let dead = false;
-    setYtr((x) => ({ ...x, busy: true, err: "" }));
-    ytSearch(q)
-      .then((items) => !dead && setYtr({ items, busy: false, err: "" }))
-      .catch(
-        (e) =>
-          !dead &&
-          setYtr({ items: [], busy: false, err: String(e.message || e) }),
-      );
-    return () => {
-      dead = true;
-    };
-  }, [v.n, ytSub]);
-  useEffect(() => {
-    if (v.n !== "yt" || (ytCh && ytCh.some((g) => g.items.length))) return;
-    let dead = false;
-    Promise.all(
-      ["PK", "IN"].map((c) =>
-        fetch(YSRV + "/api/charts?country=" + c)
-          .then((r) => r.json())
-          .then((j) => ({
-            c,
-            items: Array.isArray(j)
-              ? j.map((x) => ({
-                  k: "p",
-                  id: x.playlistId,
-                  title: x.title,
-                  img: x.thumb,
-                }))
-              : [],
-          }))
-          .catch(() => ({ c, items: [] })),
-      ),
-    ).then((r) => !dead && setYtCh(r));
-    return () => {
-      dead = true;
-    };
-  }, [v.n]);
-
-  const ty = useRef({ y: 0, top: 0 }),
+YouTube search and chart effects  const ty = useRef({ y: 0, top: 0 }),
     pv = useRef({ n: "home" });
   useEffect(() => {
     if (v.n !== "home" || hm.loaded) return;
@@ -1187,7 +1082,7 @@ export default function App() {
               ? "Effects are active on the current song."
               : "This song’s source blocks audio processing, so effects can’t be applied to it."
             : "Play a song to hear the effects."}{" "}
-          They don’t work on the YouTube and Spotify players.
+          They don’t work on the Spotify player.
         </div>
       </>
     );
@@ -1455,157 +1350,6 @@ export default function App() {
               ))
           )}
         </>
-      </>
-    );
-  } else if (v.n === "yt") {
-    const yt = d.yt || [];
-    const playY = (x) => {
-      E.pause();
-      setPlaying(false);
-      setYtCur(x);
-    };
-    const addY = (x) => {
-      if (yt.some((y) => y.id === x.id)) return tl("Already saved");
-      setD((z) => ({ ...z, yt: [x, ...(z.yt || [])] }));
-      tl("Saved");
-    };
-    const add = () => {
-      const p = ytParse(ytIn);
-      if (!p) return tl("That doesn’t look like a YouTube link");
-      addY(p);
-      playY(p);
-      setYtIn("");
-    };
-    const emb = (x) =>
-      x.k === "p"
-        ? `https://www.youtube-nocookie.com/embed/videoseries?list=${x.id}&autoplay=1`
-        : `https://www.youtube-nocookie.com/embed/${x.id}?autoplay=1&rel=0`;
-    const yrow = (x, save) => (
-      <div key={x.id} className="yrow" onClick={() => playY(x)}>
-        <div
-          className="yth"
-          style={
-            x.img || x.k === "v"
-              ? {
-                  backgroundImage: `url(${x.img || "https://i.ytimg.com/vi/" + x.id + "/mqdefault.jpg"})`,
-                }
-              : null
-          }
-        >
-          {x.k === "p" && !x.img && "☰"}
-        </div>
-        <div style={{ minWidth: 0, flex: 1 }}>
-          <b>
-            {x.title || (x.k === "p" ? "YouTube playlist" : "YouTube video")}
-          </b>
-          <small>{x.ch || ""}</small>
-        </div>
-        {save ? (
-          <button
-            className="pill"
-            style={{ fontSize: 12, padding: "4px 12px" }}
-            onClick={(e) => {
-              e.stopPropagation();
-              addY(x);
-            }}
-          >
-            ＋ Save
-          </button>
-        ) : (
-          <button
-            className="pill"
-            style={{ fontSize: 12, padding: "4px 12px" }}
-            onClick={(e) => {
-              e.stopPropagation();
-              setD((z) => ({
-                ...z,
-                yt: (z.yt || []).filter((y) => y.id !== x.id),
-              }));
-              if (ytCur && ytCur.id === x.id) setYtCur(null);
-            }}
-          >
-            Remove
-          </button>
-        )}
-      </div>
-    );
-    main = (
-      <>
-        <h2>YouTube</h2>
-        <div className="empty" style={{ padding: "0 0 14px" }}>
-          Songs play in YouTube’s own player (ads can appear). Search a song
-          below, or paste a video / playlist link.
-        </div>
-        {ytCur && (
-          <iframe
-            className="yplayer"
-            src={emb(ytCur)}
-            title="YouTube player"
-            allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
-            allowFullScreen
-          />
-        )}
-        <div className="sbox">
-          <input
-            placeholder="https://www.youtube.com/watch?v=…"
-            value={ytIn}
-            onChange={(e) => setYtIn(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && add()}
-          />
-          <button
-            className="pill"
-            style={{ padding: "5px 14px" }}
-            onClick={add}
-          >
-            Add
-          </button>
-        </div>
-        <>
-          <div className="sbox">
-            ⌕
-            <input
-              placeholder="Search any song (press Enter)…"
-              value={ytq}
-              onChange={(e) => setYtq(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && setYtSub(ytq)}
-            />
-          </div>
-          {ytr.err ? (
-            <div className="err">{ytr.err}</div>
-          ) : ytr.busy ? (
-            <div className="empty">Searching…</div>
-          ) : (
-            ytr.items.length > 0 && (
-              <>
-                <h2>Results</h2>
-                {ytr.items.map((x) => yrow(x, true))}
-              </>
-            )
-          )}
-        </>
-        {!ytr.items.length &&
-          !ytr.busy &&
-          !ytr.err &&
-          ytCh &&
-          ytCh.map(
-            (g) =>
-              g.items.length > 0 && (
-                <div key={g.c}>
-                  <h2>
-                    {g.c === "PK"
-                      ? "Top charts · Pakistan"
-                      : "Top charts · India"}
-                  </h2>
-                  {g.items.map((x) => yrow(x, true))}
-                </div>
-              ),
-          )}
-        <h2>Saved</h2>
-        {yt.length ? (
-          yt.map((x) => yrow(x, false))
-        ) : (
-          <div className="empty">Nothing saved yet.</div>
-        )}
       </>
     );
   } else if (v.n === "fx") {
@@ -1882,9 +1626,6 @@ export default function App() {
             <button className="tl" onClick={() => nav("sp")}>
               ♫<span>Spotify</span>
             </button>
-            <button className="tl" onClick={() => nav("yt")}>
-              ▶<span>YouTube</span>
-            </button>
             <button
               className={"ic" + (v.n === "fx" ? " on" : "")}
               title="Equalizer"
@@ -2155,7 +1896,6 @@ export default function App() {
           <NavItem n="bollywood" icon="♫" label="Bollywood" />
           <NavItem n="disc" icon="✦" label="Discover" />
           <NavItem n="sp" icon="♫" label="Spotify" />
-          <NavItem n="yt" icon="▶" label="YouTube" />
           <NavItem n="lib" icon="☰" label="Library" />
         </nav>
       </div>
