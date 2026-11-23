@@ -104,52 +104,78 @@ const audGet = async (path, p = {}) => {
 };
 const audSearch = (q) => audGet("/tracks/search", { query: q, limit: 30 });
 const SAAVN = "https://saavn.bycomsolutions.com";
-const saavnSearchSongs = async (query, page = 0) => {
-  const u = new URL(SAAVN + "/api/search/songs");
-  u.searchParams.set("query", query);
-  u.searchParams.set("page", String(page));
-  u.searchParams.set("limit", "20");
+const saavnImage = (images) =>
+  [...(Array.isArray(images) ? images : [])].sort(
+    (a, b) => parseInt(b.quality || "0", 10) - parseInt(a.quality || "0", 10),
+  )[0]?.url || "";
+const mapSaavnSong = (x) => {
+  const id = "s" + x.id;
+  const audio = Array.isArray(x.downloadUrl) ? x.downloadUrl : [];
+  const bestAudio = [...audio].sort(
+    (a, b) => parseInt(b.quality || "0", 10) - parseInt(a.quality || "0", 10),
+  )[0]?.url;
+  const bestImage = saavnImage(x.image);
+  const artist =
+    x.artists?.primary?.map((a) => a.name).filter(Boolean).join(", ") ||
+    x.artists?.all?.map((a) => a.name).filter(Boolean).join(", ") ||
+    x.album?.name ||
+    "Unknown artist";
+  T[id] = {
+    ...(T[id] || {}),
+    id,
+    title: x.name || x.title || "Unknown title",
+    artist,
+    g: "saavn",
+    url: bestAudio || T[id]?.url || "",
+    dur: Number(x.duration) || T[id]?.dur || 0,
+    img: bestImage || T[id]?.img || "",
+    artistImg: bestImage || T[id]?.artistImg || "",
+    hue: [...String(x.id)].reduce((a, c) => a + c.charCodeAt(0), 0) % 360,
+    album: x.album?.name || x.album || T[id]?.album || "",
+    sourceUrl: x.url || T[id]?.sourceUrl || "",
+  };
+  return id;
+};
+const saavnRequest = async (path, params = {}) => {
+  const u = new URL(SAAVN + path);
+  Object.entries(params).forEach(([k, v]) => u.searchParams.set(k, v));
   const r = await fetch(u);
-  if (!r.ok) throw new Error("JioSaavn search failed (" + r.status + ")");
+  if (!r.ok) throw new Error("JioSaavn request failed (" + r.status + ")");
   const j = await r.json();
-  if (j.success === false)
-    throw new Error(j.message || "JioSaavn request failed");
-  return (j.data?.results || []).map((x) => {
-    const id = "s" + x.id;
-    const images = Array.isArray(x.image) ? x.image : [];
-    const audio = Array.isArray(x.downloadUrl) ? x.downloadUrl : [];
-    const bestAudio = [...audio].sort(
-      (a, b) => parseInt(b.quality || "0", 10) - parseInt(a.quality || "0", 10),
-    )[0]?.url;
-    const bestImage = [...images].sort(
-      (a, b) => parseInt(b.quality || "0", 10) - parseInt(a.quality || "0", 10),
-    )[0]?.url;
-    const artist =
-      x.artists?.primary
-        ?.map((a) => a.name)
-        .filter(Boolean)
-        .join(", ") ||
-      x.artists?.all
-        ?.map((a) => a.name)
-        .filter(Boolean)
-        .join(", ") ||
-      x.album?.name ||
-      "Unknown artist";
-    T[id] = T[id] || {
-      id,
-      title: x.name || "Unknown title",
-      artist,
-      g: "saavn",
-      url: bestAudio || "",
-      dur: Number(x.duration) || 0,
-      img: bestImage || "",
-      artistImg: bestImage || "",
-      hue: [...String(x.id)].reduce((a, c) => a + c.charCodeAt(0), 0) % 360,
-      album: x.album?.name || "",
-      sourceUrl: x.url || "",
-    };
-    return id;
-  });
+  if (j.success === false) throw new Error(j.message || "JioSaavn request failed");
+  return j.data ?? j;
+};
+const saavnList = (data) =>
+  Array.isArray(data) ? data : data?.results || data?.songs || data?.topSongs || [];
+const saavnSearchSongs = async (query, page = 0) => {
+  const data = await saavnRequest("/api/search/songs", { query, page, limit: 20 });
+  return saavnList(data).map(mapSaavnSong);
+};
+const saavnSearchArtists = async (query) => {
+  const data = await saavnRequest("/api/search/artists", { query, page: 0, limit: 16 });
+  return saavnList(data).map((x) => ({
+    id: String(x.id),
+    name: x.name || x.title || "Unknown artist",
+    role: x.role || "Artist",
+    img: saavnImage(x.image),
+    url: x.url || "",
+  }));
+};
+const saavnSearchAlbums = async (query) => {
+  const data = await saavnRequest("/api/search/albums", { query, page: 0, limit: 16 });
+  return saavnList(data).map((x) => ({
+    id: String(x.id),
+    name: x.name || x.title || "Untitled album",
+    artist:
+      x.artists?.primary?.map((a) => a.name).filter(Boolean).join(", ") ||
+      x.artists?.all?.map((a) => a.name).filter(Boolean).join(", ") ||
+      x.artist ||
+      "Various artists",
+    img: saavnImage(x.image),
+    year: x.year || "",
+    language: x.language || "",
+    url: x.url || "",
+  }));
 };
 const GAANA = "https://shnwazdev-gaana-api.vercel.app";
 const gaanaSearchSongs = async (query) => {
@@ -529,9 +555,13 @@ export default function App() {
       aids: [],
       saavn: [],
       gaana: [],
+      artists: [],
+      albums: [],
       busy: false,
       err: "",
     }),
+    [searchFilter, setSearchFilter] = useState("all"),
+    [detail, setDetail] = useState({ busy: false, err: "", artist: null, album: null, songs: [], albums: [] }),
     [bq, setBq] = useState(""),
     [br, setBr] = useState({ ids: [], busy: false, err: "" }),
     [pq, setPq] = useState(""),
@@ -962,7 +992,7 @@ export default function App() {
     if (v.n !== "search") return;
     const q = sq.trim();
     if (!q) {
-      setSr({ ids: [], aids: [], saavn: [], gaana: [], busy: false, err: "" });
+      setSr({ ids: [], aids: [], saavn: [], gaana: [], artists: [], albums: [], busy: false, err: "" });
       return;
     }
     let dead = false;
@@ -974,24 +1004,23 @@ export default function App() {
           audSearch(q),
           saavnSearchSongs(q),
           gaanaSearchSongs(q),
-        ]).then(
-          ([a, b, c, d]) =>
-            !dead &&
-            setSr({
-              ids: a.status === "fulfilled" ? a.value : [],
-              aids: b.status === "fulfilled" ? b.value : [],
-              saavn: c.status === "fulfilled" ? c.value : [],
-              gaana: d.status === "fulfilled" ? d.value : [],
-              busy: false,
-              err:
-                a.status === "rejected" &&
-                b.status === "rejected" &&
-                c.status === "rejected" &&
-                d.status === "rejected"
-                  ? String((c.reason && c.reason.message) || c.reason)
-                  : "",
-            }),
-        ),
+          saavnSearchArtists(q),
+          saavnSearchAlbums(q),
+        ]).then(([a, b, c, d, e, f]) => {
+          if (dead) return;
+          setSr({
+            ids: a.status === "fulfilled" ? a.value : [],
+            aids: b.status === "fulfilled" ? b.value : [],
+            saavn: c.status === "fulfilled" ? c.value : [],
+            gaana: d.status === "fulfilled" ? d.value : [],
+            artists: e.status === "fulfilled" ? e.value : [],
+            albums: f.status === "fulfilled" ? f.value : [],
+            busy: false,
+            err: [a, b, c, d, e, f].every((x) => x.status === "rejected")
+              ? String((c.reason && c.reason.message) || c.reason)
+              : "",
+          });
+        }),
       400,
     );
     return () => {
@@ -999,6 +1028,63 @@ export default function App() {
       clearTimeout(h);
     };
   }, [v.n, sq]);
+
+  useEffect(() => {
+    if (v.n !== "artist" && v.n !== "album") return;
+    let dead = false;
+    setDetail({ busy: true, err: "", artist: null, album: null, songs: [], albums: [] });
+    const id = v.id;
+    if (v.n === "artist") {
+      Promise.allSettled([
+        saavnRequest("/api/artists/" + encodeURIComponent(id)),
+        saavnRequest("/api/artists/" + encodeURIComponent(id) + "/songs", { page: 0, sort: 1 }),
+        saavnRequest("/api/artists/" + encodeURIComponent(id) + "/albums", { page: 0, sort: 1 }),
+      ]).then(([artistResult, songsResult, albumsResult]) => {
+        if (dead) return;
+        const artistData = artistResult.status === "fulfilled" ? artistResult.value : null;
+        const artist = Array.isArray(artistData) ? artistData[0] : artistData;
+        const songData = songsResult.status === "fulfilled" ? songsResult.value : [];
+        const albumData = albumsResult.status === "fulfilled" ? albumsResult.value : [];
+        const songs = saavnList(songData).map(mapSaavnSong);
+        const albums = saavnList(albumData).map((x) => ({
+          id: String(x.id),
+          name: x.name || x.title || "Untitled album",
+          artist: artist?.name || artist?.title || "Artist",
+          img: saavnImage(x.image),
+          year: x.year || "",
+          language: x.language || "",
+          url: x.url || "",
+        }));
+        setDetail({
+          busy: false,
+          err: artistResult.status === "rejected" && songsResult.status === "rejected"
+            ? String(artistResult.reason?.message || "Could not load this artist.")
+            : "",
+          artist: artist || { id, name: "Artist" },
+          album: null,
+          songs,
+          albums,
+        });
+      });
+    } else {
+      saavnRequest("/api/albums", { id }).then((data) => {
+        if (dead) return;
+        const album = Array.isArray(data) ? data[0] : data;
+        const songs = saavnList(album?.songs || album?.tracks || album).map(mapSaavnSong);
+        setDetail({
+          busy: false,
+          err: "",
+          artist: null,
+          album: album || { id, name: "Album" },
+          songs,
+          albums: [],
+        });
+      }).catch((error) => {
+        if (!dead) setDetail({ busy: false, err: String(error.message || error), artist: null, album: null, songs: [], albums: [] });
+      });
+    }
+    return () => { dead = true; };
+  }, [v.n, v.id]);
 
   useEffect(() => {
     if (v.n !== "bollywood") return;
@@ -1461,112 +1547,130 @@ export default function App() {
       </>
     );
   else if (v.n === "search") {
-    const s = sq.trim().toLowerCase(),
-      jset = new Set([
-        ...sr.ids,
-        ...sr.aids,
-        ...(sr.saavn || []),
-        ...(sr.gaana || []),
-      ]);
-    const res = s
-      ? allIds().filter(
-          (id) =>
-            !jset.has(id) &&
-            (T[id].title + " " + T[id].artist + " " + GL[T[id].g])
-              .toLowerCase()
-              .includes(s),
-        )
-      : [];
+    const s = sq.trim().toLowerCase();
+    const jset = new Set([
+      ...sr.ids, ...sr.aids, ...(sr.saavn || []), ...(sr.gaana || []),
+    ]);
+    const res = s ? allIds().filter((id) =>
+      !jset.has(id) &&
+      (T[id].title + " " + T[id].artist + " " + GL[T[id].g]).toLowerCase().includes(s),
+    ) : [];
     const cats = [
-      ...new Map(
-        [
-          ...Object.keys(GL)
-            .filter((k) => k !== "local" && k !== "jamendo" && k !== "audius")
-            .map((k) => GL[k]),
-          ...Object.keys(DESI),
-          ...TAGS,
-        ].map((n) => [n.toLowerCase(), n]),
-      ).values(),
+      ...new Map([
+        ...Object.keys(GL).filter((k) => k !== "local" && k !== "jamendo" && k !== "audius").map((k) => GL[k]),
+        ...Object.keys(DESI), ...TAGS,
+      ].map((n) => [n.toLowerCase(), n])).values(),
     ];
+    const filters = [
+      ["all", "All"], ["songs", "Songs"], ["artists", "Artists"], ["albums", "Albums"],
+    ];
+    const artistCards = (items) => (
+      <div className="entity-grid artist-results">
+        {items.map((artist) => (
+          <button className="entity-card artist-result" key={artist.id} onClick={() => nav("artist", artist.id)}>
+            {artist.img ? <img src={artist.img} alt="" loading="lazy" /> : <span className="entity-placeholder">♪</span>}
+            <b>{artist.name}</b><small>{artist.role || "Artist"}</small>
+          </button>
+        ))}
+      </div>
+    );
+    const albumCards = (items) => (
+      <div className="entity-grid album-results">
+        {items.map((album) => (
+          <button className="entity-card album-result" key={album.id} onClick={() => nav("album", album.id)}>
+            {album.img ? <img src={album.img} alt="" loading="lazy" /> : <span className="entity-placeholder">♫</span>}
+            <b>{album.name}</b><small>{album.artist}{album.year ? " · " + album.year : ""}</small>
+          </button>
+        ))}
+      </div>
+    );
+    const showSongs = searchFilter === "all" || searchFilter === "songs";
+    const showArtists = searchFilter === "all" || searchFilter === "artists";
+    const showAlbums = searchFilter === "all" || searchFilter === "albums";
     main = (
       <>
         {s ? (
           <>
-            {sr.err ? (
-              <div className="err">{sr.err}</div>
-            ) : (
-              <>
-                <h2>From JioSaavn</h2>
-                {sr.busy && !(sr.saavn || []).length ? (
-                  <div className="empty">Searching JioSaavn…</div>
-                ) : (sr.saavn || []).length ? (
-                  rows(sr.saavn, "saavn-search-")
-                ) : (
-                  <div className="empty">
-                    No Bollywood songs found for “{sq}”.
-                  </div>
-                )}
-                <h2>From Gaana</h2>
-                {sr.busy && !(sr.gaana || []).length ? (
-                  <div className="empty">Searching Gaana…</div>
-                ) : (sr.gaana || []).length ? (
-                  rows(sr.gaana, "gaana-search-")
-                ) : (
-                  <div className="empty">No Gaana results for “{sq}”.</div>
-                )}
-                {JKEY && (
-                  <>
-                    <h2>From Jamendo</h2>
-                    {sr.busy && !sr.ids.length ? (
-                      <div className="empty">Searching…</div>
-                    ) : sr.ids.length ? (
-                      rows(sr.ids, "j")
-                    ) : (
-                      <div className="empty">
-                        No songs found on Jamendo for “{sq}”.
-                      </div>
-                    )}
-                  </>
-                )}
-                <h2>From Audius</h2>
-                {sr.busy && !sr.aids.length ? (
-                  <div className="empty">Searching…</div>
-                ) : sr.aids.length ? (
-                  rows(sr.aids, "au")
-                ) : (
-                  <div className="empty">
-                    No songs found on Audius for “{sq}”.
-                  </div>
-                )}
-              </>
-            )}
-            {res.length > 0 && (
-              <>
-                <h2>In your library</h2>
-                {rows(res, "s")}
-              </>
-            )}
+            <div className="search-filters" role="tablist" aria-label="Search categories">
+              {filters.map(([key, label]) => (
+                <button key={key} className={"search-filter" + (searchFilter === key ? " active" : "")}
+                  role="tab" aria-selected={searchFilter === key} onClick={() => setSearchFilter(key)}>{label}</button>
+              ))}
+            </div>
+            {sr.busy && !sr.saavn.length && !sr.artists.length && !sr.albums.length && <div className="empty">Searching WaveLenght…</div>}
+            {showArtists && <>
+              <div className="hhead"><h2>Artists</h2></div>
+              {sr.artists.length ? artistCards(sr.artists) : <div className="empty">{sr.busy ? "Finding artists…" : "No artists found."}</div>}
+            </>}
+            {showAlbums && <>
+              <div className="hhead"><h2>Albums</h2></div>
+              {sr.albums.length ? albumCards(sr.albums) : <div className="empty">{sr.busy ? "Finding albums…" : "No albums found."}</div>}
+            </>}
+            {showSongs && <>
+              <div className="hhead"><h2>Songs · JioSaavn</h2></div>
+              {sr.saavn.length ? rows(sr.saavn, "saavn-search-") : <div className="empty">{sr.busy ? "Searching JioSaavn…" : "No JioSaavn songs found."}</div>}
+              <div className="hhead"><h2>Songs · Gaana</h2></div>
+              {sr.gaana.length ? rows(sr.gaana, "gaana-search-") : <div className="empty">{sr.busy ? "Searching Gaana…" : "No Gaana results."}</div>}
+              {JKEY && <>
+                <div className="hhead"><h2>Songs · Jamendo</h2></div>
+                {sr.ids.length ? rows(sr.ids, "j") : <div className="empty">{sr.busy ? "Searching Jamendo…" : "No Jamendo results."}</div>}
+              </>}
+              <div className="hhead"><h2>Songs · Audius</h2></div>
+              {sr.aids.length ? rows(sr.aids, "au") : <div className="empty">{sr.busy ? "Searching Audius…" : "No Audius results."}</div>}
+              {res.length > 0 && <><div className="hhead"><h2>In your library</h2></div>{rows(res, "s")}</>}
+            </>}
           </>
         ) : (
           <>
             <h2>Browse all</h2>
-            <div className="cats">
-              {cats.map((n, i) => (
-                <div
-                  key={n}
-                  className="cat cap"
-                  style={{ background: `hsl(${i * 47 + 20} 60% 40%)` }}
-                  onClick={() => setSq(n)}
-                >
-                  {n}
-                </div>
-              ))}
-            </div>
+            <div className="cats">{cats.map((n, i) => (
+              <div key={n} className="cat cap" style={{ background: `hsl(${i * 47 + 20} 60% 40%)` }} onClick={() => setSq(n)}>{n}</div>
+            ))}</div>
           </>
         )}
       </>
     );
-  } else if (v.n === "bollywood") {
+  } else if (v.n === "artist") {
+    const artist = detail.artist || {};
+    const artistName = artist.name || artist.title || "Artist";
+    const artistImage = saavnImage(artist.image) || artist.image?.[0]?.url || "";
+    main = (
+      <>
+        <button className="detail-back" onClick={() => nav("search")}>← Back to search</button>
+        <section className="detail-hero artist-hero">
+          {artistImage ? <img src={artistImage} alt="" /> : <div className="entity-placeholder">♪</div>}
+          <div><small>ARTIST</small><h1>{artistName}</h1><p>{artist.role || "Artist"}{artist.followerCount ? " · " + Number(artist.followerCount).toLocaleString() + " followers" : ""}</p></div>
+        </section>
+        {detail.busy ? <div className="empty">Loading artist…</div> : detail.err ? <div className="err">{detail.err}</div> : <>
+          <div className="hhead"><h2>Popular songs</h2></div>
+          {rows(detail.songs, "artist-" + v.id)}
+          {detail.albums.length > 0 && <><div className="hhead"><h2>Albums</h2></div><div className="entity-grid album-results">
+            {detail.albums.map((album) => <button className="entity-card album-result" key={album.id} onClick={() => nav("album", album.id)}>
+              {album.img ? <img src={album.img} alt="" loading="lazy" /> : <span className="entity-placeholder">♫</span>}
+              <b>{album.name}</b><small>{album.year || album.language || "Album"}</small>
+            </button>)}
+          </div></>}
+        </>}
+      </>
+    );
+  } else if (v.n === "album") {
+    const album = detail.album || {};
+    const albumName = album.name || album.title || "Album";
+    const albumImage = saavnImage(album.image) || album.image?.[0]?.url || "";
+    const albumArtist = album.artists?.primary?.map((a) => a.name).filter(Boolean).join(", ") || album.artist || "Various artists";
+    main = (
+      <>
+        <button className="detail-back" onClick={() => nav("search")}>← Back to search</button>
+        <section className="detail-hero album-hero">
+          {albumImage ? <img src={albumImage} alt="" /> : <div className="entity-placeholder">♫</div>}
+          <div><small>ALBUM</small><h1>{albumName}</h1><p>{albumArtist}{album.year ? " · " + album.year : ""}{album.language ? " · " + album.language : ""}</p>
+            <button className="pri detail-play" disabled={!detail.songs.length} onClick={() => play(detail.songs, detail.songs[0])}>▶ Play album</button>
+          </div>
+        </section>
+        {detail.busy ? <div className="empty">Loading album…</div> : detail.err ? <div className="err">{detail.err}</div> : rows(detail.songs, "album-" + v.id)}
+      </>
+    );
+  }  } else if (v.n === "bollywood") {
     main = (
       <>
         <div className="hhead">
