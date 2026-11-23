@@ -2556,12 +2556,21 @@ span.chip {
     border-radius: 14px;
   }
   #tabs .nv {
-    min-height: 48px;
+    min-height: 50px;
     border-radius: 10px;
-    gap: 4px;
-    font-size: 10px !important;
+    gap: 3px;
+    font-size: 9px !important;
     color: #a7a7a7;
     transition: color 150ms ease, background 150ms ease;
+  }
+  #tabs .nv > :first-child {
+    font-size: 27px !important;
+    line-height: 1;
+  }
+  #tabs .nv span {
+    font-size: 9px;
+    line-height: 1.1;
+    font-weight: 500;
   }
   #tabs .nv.on {
     color: #fff;
