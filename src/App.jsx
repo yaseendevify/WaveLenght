@@ -2236,6 +2236,9 @@ export default function App() {
       setV(pv.current || { n: "home" });
     } else {
       pv.current = v;
+      // Dismiss player overlays so they cannot cover the Equalizer view.
+      setNpOpen(false);
+      setQueueOpen(false);
       setV({ n: "fx" });
     }
   };
