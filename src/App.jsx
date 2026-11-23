@@ -375,6 +375,9 @@ const KEYS = [
   "vol",
   "shuf",
   "rep",
+  "playlists",
+  "savedAlbums",
+  "followedArtists",
 ];
 const readLocal = () => {
   try {
@@ -481,12 +484,24 @@ function Row({ id, i, list, c }) {
         className="ib"
         data-q="1"
         title="Add to queue"
+        aria-label={"Add " + t.title + " to queue"}
         onClick={(e) => {
           e.stopPropagation();
           c.addQ(id);
         }}
       >
         ＋
+      </button>
+      <button
+        className="ib playlist-add"
+        title="Add to playlist"
+        aria-label={"Add " + t.title + " to playlist"}
+        onClick={(e) => {
+          e.stopPropagation();
+          c.addToPlaylist(id);
+        }}
+      >
+        ☷
       </button>
     </div>
   );
@@ -507,7 +522,9 @@ export default function App() {
     [lsOpen, setLsOpen] = useState(false),
     [sortOpen, setSortOpen] = useState(false),
     [acctOpen, setAcctOpen] = useState(false),
-    [hm, setHm] = useState({ shelves: [], loaded: false });
+    [hm, setHm] = useState({ shelves: [], loaded: false }),
+    [playlistPicker, setPlaylistPicker] = useState(null),
+    [playlistForm, setPlaylistForm] = useState(null);
   const [cur, setCur] = useState(null),
     [playing, setPlaying] = useState(false),
     [q, setQ] = useState({ ids: [], i: 0 });
@@ -525,7 +542,10 @@ export default function App() {
     rep = d.rep || "off",
     shuf = !!d.shuf,
     vol = d.vol ?? 0.8,
-    sp = d.sp || [];
+    sp = d.sp || [],
+    playlists = d.playlists || [],
+    savedAlbums = d.savedAlbums || [],
+    followedArtists = d.followedArtists || [];
   (d.jam || []).forEach((j) => {
     if (!T[j.id])
       T[j.id] = {
@@ -553,6 +573,11 @@ export default function App() {
                 ? "gaana"
                 : "jamendo",
       };
+  });
+  (d.playlists || []).forEach((playlist) => {
+    (playlist.trackData || []).forEach((track) => {
+      if (track?.id && !T[track.id]) T[track.id] = { ...track };
+    });
   });
   const [dc, setDc] = useState({ shelves: [], busy: false, err: "" }),
     [dq, setDq] = useState(""),
@@ -588,14 +613,119 @@ export default function App() {
   };
   const allIds = () =>
     Object.keys(T).filter((id) => !T[id].url || liked.has(id));
-  const idsOf = (k) =>
-    k === "liked" ? [...liked].filter((x) => T[x]) : k === "local" ? local : [];
-  const meta = (k) =>
-    k === "liked"
-      ? { name: "Liked Songs", desc: "Songs you’ve hearted", hue: 280 }
-      : k === "local"
-        ? { name: "Your music", desc: "Files from your device", hue: 160 }
-        : null;
+  const idsOf = (k) => {
+    if (k === "liked") return [...liked].filter((x) => T[x]);
+    if (k === "local") return local;
+    return playlists.find((playlist) => playlist.id === k)?.tracks?.filter((id) => T[id]) || [];
+  };
+  const meta = (k) => {
+    if (k === "liked") return { name: "Liked Songs", desc: "Songs you’ve hearted", hue: 280 };
+    if (k === "local") return { name: "Your music", desc: "Files from your device", hue: 160 };
+    const playlist = playlists.find((item) => item.id === k);
+    return playlist ? {
+      name: playlist.name,
+      desc: playlist.description || "Playlist",
+      hue: 185,
+      img: playlist.cover || "",
+    } : null;
+  };
+  const savePlaylist = () => {
+    const name = (playlistForm?.name || "").trim();
+    if (!name) return tl("Give your playlist a name first");
+    if (playlistForm.mode === "edit") {
+      setD((x) => ({
+        ...x,
+        playlists: (x.playlists || []).map((item) => item.id === playlistForm.id
+          ? { ...item, name, description: playlistForm.description.trim(), cover: playlistForm.cover.trim(), isPublic: !!playlistForm.isPublic, updatedAt: Date.now() }
+          : item),
+      }));
+      tl("Playlist updated");
+    } else {
+      const id = "p_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+      const item = { id, name, description: playlistForm.description.trim(), cover: playlistForm.cover.trim(), isPublic: !!playlistForm.isPublic, tracks: [], trackData: [], createdAt: Date.now(), updatedAt: Date.now() };
+      setD((x) => ({ ...x, playlists: [item, ...(x.playlists || [])] }));
+      nav("pl", id);
+      tl("Playlist created");
+    }
+    setPlaylistForm(null);
+  };
+  const deletePlaylist = (id) => {
+    const item = playlists.find((p) => p.id === id);
+    if (!item || !confirm('Delete "' + item.name + '"? This cannot be undone.')) return;
+    setD((x) => ({ ...x, playlists: (x.playlists || []).filter((p) => p.id !== id) }));
+    nav("lib");
+    tl("Playlist deleted");
+  };
+  const addToPlaylist = (id) => {
+    if (!playlists.length) {
+      setPlaylistForm({ mode: "create", name: "", description: "", cover: "", isPublic: false });
+      tl("Create a playlist to add this song");
+      return;
+    }
+    setPlaylistPicker(id);
+  };
+  const choosePlaylist = (playlistId) => {
+    const track = T[playlistPicker];
+    if (!track) return setPlaylistPicker(null);
+    setD((x) => ({
+      ...x,
+      playlists: (x.playlists || []).map((item) => {
+        if (item.id !== playlistId) return item;
+        if ((item.tracks || []).includes(track.id)) return item;
+        const trackData = [...(item.trackData || []).filter((t) => t.id !== track.id), {
+          id: track.id, title: track.title, artist: track.artist, g: track.g,
+          url: track.url || "", dur: track.dur || 0, img: track.img || "",
+          artistImg: track.artistImg || "", hue: track.hue || 0, album: track.album || "",
+        }];
+        return { ...item, tracks: [...(item.tracks || []), track.id], trackData, updatedAt: Date.now() };
+      }),
+    }));
+    setPlaylistPicker(null);
+    tl("Added to playlist");
+  };
+  const removePlaylistTrack = (playlistId, trackId) => setD((x) => ({
+    ...x,
+    playlists: (x.playlists || []).map((item) => item.id === playlistId
+      ? { ...item, tracks: (item.tracks || []).filter((id) => id !== trackId), trackData: (item.trackData || []).filter((track) => track.id !== trackId), updatedAt: Date.now() }
+      : item),
+  }));
+  const movePlaylistTrack = (playlistId, index, direction) => setD((x) => ({
+    ...x,
+    playlists: (x.playlists || []).map((item) => {
+      if (item.id !== playlistId) return item;
+      const tracks = [...(item.tracks || [])], next = index + direction;
+      if (next < 0 || next >= tracks.length) return item;
+      [tracks[index], tracks[next]] = [tracks[next], tracks[index]];
+      return { ...item, tracks, updatedAt: Date.now() };
+    }),
+  }));
+  const toggleAlbumSave = (album) => {
+    const entry = {
+      id: String(album.id), name: album.name || album.title || "Album",
+      artist: album.artist || album.artists?.primary?.map((a) => a.name).filter(Boolean).join(", ") || "Various artists",
+      img: album.img || saavnImage(album.image) || album.image?.[0]?.url || "",
+      year: album.year || "", language: album.language || "",
+    };
+    setD((x) => ({
+      ...x,
+      savedAlbums: (x.savedAlbums || []).some((item) => item.id === entry.id)
+        ? x.savedAlbums.filter((item) => item.id !== entry.id)
+        : [entry, ...(x.savedAlbums || [])],
+    }));
+  };
+  const toggleArtistFollow = (artist) => {
+    const entry = {
+      id: String(artist.id), name: artist.name || artist.title || "Artist",
+      role: artist.role || "Artist",
+      img: artist.img || saavnImage(artist.image) || artist.image?.[0]?.url || "",
+    };
+    setD((x) => ({
+      ...x,
+      followedArtists: (x.followedArtists || []).some((item) => item.id === entry.id)
+        ? x.followedArtists.filter((item) => item.id !== entry.id)
+        : [entry, ...(x.followedArtists || [])],
+    }));
+  };
 
   /* player */
   const go = async (id, nq, auto = true) => {
@@ -775,7 +905,7 @@ export default function App() {
     setQueueOpen(false);
   };
   R.current = { q, rep, cur, playing, next, toggle, prev, like, toggleShuf };
-  const c = { cur, playing, liked, play, like, addQ };
+  const c = { cur, playing, liked, play, like, addQ, addToPlaylist };
 
   /* local files */
   const addFiles = async (e) => {
@@ -1240,6 +1370,7 @@ export default function App() {
   };
   const Li = ({ k }) => {
     const p = meta(k);
+    if (!p) return null;
     return (
       <div className="li" title={p.name} onClick={() => nav("pl", k)}>
         <div className="a" style={bg(p)} />
@@ -1250,7 +1381,7 @@ export default function App() {
       </div>
     );
   };
-  const plKeys = ["liked", ...(local.length ? ["local"] : [])];
+  const plKeys = ["liked", ...playlists.map((item) => item.id), ...(local.length ? ["local"] : [])];
   const acct = user ? (
     <button
       className="addm"
