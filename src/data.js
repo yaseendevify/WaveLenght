@@ -1,4 +1,4 @@
-const GL={lofi:'Lo-fi',synthwave:'Synthwave',ambient:'Ambient',pop:'Pop',trap:'Trap',local:'Your music'};
+const GL={lofi:'Lo-fi',synthwave:'Synthwave',ambient:'Ambient',pop:'Pop',trap:'Trap',local:'Your music',saavn:'JioSaavn',gaana:'Gaana'};
 const SC={min:[0,2,3,5,7,8,10],maj:[0,2,4,5,7,9,11],dor:[0,2,3,5,7,9,10]};
 const T={},LOC=[];
 [['Neon Rain','Nova Lane','synthwave',108,57,'min',[0,5,2,6],'sawtooth',.5,300,152],['Chrome Horizon','Nova Lane','synthwave',100,55,'min',[0,3,5,4],'sawtooth',.45,260,168],
