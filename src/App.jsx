@@ -469,6 +469,7 @@ export default function App() {
     [sq, setSq] = useState(""),
     [spIn, setSpIn] = useState(""),
     [npOpen, setNpOpen] = useState(false),
+    [queueOpen, setQueueOpen] = useState(false),
     [lq, setLq] = useState(""),
     [lsOpen, setLsOpen] = useState(false),
     [sortOpen, setSortOpen] = useState(false),
@@ -707,11 +708,34 @@ export default function App() {
     }));
   const addQ = (id) => {
     if (!cur) return play([id], id);
-    setQ((x) => ({
-      ids: [...x.ids.slice(0, x.i + 1), id, ...x.ids.slice(x.i + 1)],
-      i: x.i,
-    }));
+    setQ((x) => ({ ...x, ids: [...x.ids, id] }));
     tl("Added to queue");
+  };
+  const moveQ = (from, to) => {
+    setQ((x) => {
+      if (from <= x.i || to <= x.i || from >= x.ids.length || to >= x.ids.length) return x;
+      const ids = [...x.ids];
+      const [item] = ids.splice(from, 1);
+      ids.splice(to, 0, item);
+      return { ...x, ids };
+    });
+  };
+  const removeQ = (index) => {
+    setQ((x) => {
+      if (index <= x.i || index >= x.ids.length) return x;
+      return { ...x, ids: x.ids.filter((_, i) => i !== index) };
+    });
+    tl("Removed from queue");
+  };
+  const clearQ = () => {
+    setQ({ ids: cur ? [cur.id] : [], i: 0 });
+    tl("Queue cleared");
+  };
+  const playQueueItem = (index) => {
+    const id = q.ids[index];
+    if (!id || !T[id]) return;
+    go(id, { ...q, i: index });
+    setQueueOpen(false);
   };
   R.current = { q, rep, cur, playing, next, toggle, prev, like, toggleShuf };
   const c = { cur, playing, liked, play, like, addQ };
@@ -2254,6 +2278,14 @@ export default function App() {
             >
               ♥
             </button>
+            <button
+              className="ib queue-trigger"
+              title="Open queue"
+              aria-label="Open queue"
+              onClick={() => setQueueOpen(true)}
+            >
+              ☷{q.ids.length > q.i + 1 ? <small>{q.ids.length - q.i - 1}</small> : null}
+            </button>
             <input
               type="range"
               min="0"
@@ -2278,6 +2310,55 @@ export default function App() {
           <NavItem n="lib" icon="☰" label="Library" />
         </nav>
       </div>
+      {queueOpen && (
+        <div className="queue-sheet" role="dialog" aria-modal="true" aria-label="Up Next">
+          <div className="queue-panel">
+            <div className="queue-head">
+              <div>
+                <small>PLAYING FROM YOUR QUEUE</small>
+                <h2>Up Next</h2>
+                <p>{Math.max(0, q.ids.length - q.i - 1)} songs in queue</p>
+              </div>
+              <div className="queue-head-actions">
+                <button className="pill sm" onClick={clearQ} disabled={q.ids.length <= q.i + 1}>Clear queue</button>
+                <button className="ib" aria-label="Close queue" onClick={() => setQueueOpen(false)}>✕</button>
+              </div>
+            </div>
+            {cur && (
+              <div className="queue-current">
+                <div className="cv" style={bg(cur)} />
+                <div className="queue-track-copy">
+                  <small>NOW PLAYING</small>
+                  <b>{cur.title}</b>
+                  <span>{cur.artist}</span>
+                </div>
+                <span className="queue-playing-mark">♫</span>
+              </div>
+            )}
+            <div className="queue-list">
+              {q.ids.slice(q.i + 1).length ? q.ids.slice(q.i + 1).map((id, offset) => {
+                const index = q.i + 1 + offset;
+                const track = T[id];
+                if (!track) return null;
+                return (
+                  <div className="queue-item" key={id + "-" + index}>
+                    <button className="queue-track" onClick={() => playQueueItem(index)}>
+                      <div className="cv" style={bg(track)} />
+                      <span className="queue-track-copy"><b>{track.title}</b><small>{track.artist}</small></span>
+                    </button>
+                    <div className="queue-item-actions">
+                      <button title="Move to play next" aria-label={"Move " + track.title + " to play next"} disabled={offset === 0} onClick={() => moveQ(index, q.i + 1)}>↥</button>
+                      <button title="Move up" aria-label={"Move " + track.title + " up"} disabled={offset === 0} onClick={() => moveQ(index, index - 1)}>↑</button>
+                      <button title="Move down" aria-label={"Move " + track.title + " down"} disabled={index === q.ids.length - 1} onClick={() => moveQ(index, index + 1)}>↓</button>
+                      <button title="Remove from queue" aria-label={"Remove " + track.title} onClick={() => removeQ(index)}>✕</button>
+                    </div>
+                  </div>
+                );
+              }) : <div className="queue-empty">Your queue is empty. Add songs with the + button to hear them next.</div>}
+            </div>
+          </div>
+        </div>
+      )}
       {npOpen && cur && (
         <div
           className="sheet"
