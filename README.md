@@ -12,7 +12,7 @@ npm run dev
 ## Firebase setup (once)
 1. Firebase console → your project → Project settings → Your apps → Web app. Copy `apiKey`, `authDomain`, `projectId`, `appId` into `.env`.
 2. Authentication → Sign-in method: enable **Email/Password** and **Google**.
-3. Firestore Database → Rules: paste the contents of `firestore.rules` and Publish (each user can only read/write their own document).
+3. Firestore Database → Rules: paste the contents of `firestore.rules` and Publish. User data stays private; public playlist documents are readable only by direct share link and writable only by their owner.
 4. Authentication → Settings → Authorized domains: add your hosting domain (e.g. `yourapp.netlify.app`). `localhost` is already allowed.
 
 ## Discover tab (Jamendo)
@@ -38,3 +38,7 @@ The Bollywood tab and the main Search page both query the JioSaavn-compatible AP
 - Gaana integration uses the unofficial public API documented at https://github.com/shnwazdev/shnwazdev-GaanaAPI. It does not require an API key, but upstream availability and regional access are not guaranteed.
 - Gaana stream links may be HLS (`.m3u8`). Native HLS playback depends on browser support; this project does not bundle an HLS playback library. If a browser cannot play a returned HLS URL, the song may appear in search but playback can fail.
 - Only stream or reuse music where you have the appropriate rights. The API repository's MIT license does not grant rights to Gaana's music catalog.
+
+## Public playlist links
+
+Signed-in users can mark a playlist public and copy its link. Anyone with the link can view the playlist name, description, cover, and catalog track details; visitors cannot edit it. Device-only audio files are not included. Publish the rules in `firestore.rules` before using public links.

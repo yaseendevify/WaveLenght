@@ -1,8 +1,43 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    function validSharedPlaylist() {
+      return request.resource.data.keys().hasOnly([
+          'ownerId', 'isPublic', 'name', 'description', 'cover',
+          'localTrackCount', 'tracks', 'updatedAt'
+        ])
+        && request.resource.data.keys().hasAll([
+          'ownerId', 'isPublic', 'name', 'description', 'cover',
+          'localTrackCount', 'tracks', 'updatedAt'
+        ])
+        && request.resource.data.ownerId == request.auth.uid
+        && request.resource.data.isPublic == true
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0
+        && request.resource.data.name.size() <= 70
+        && request.resource.data.description is string
+        && request.resource.data.description.size() <= 240
+        && request.resource.data.cover is string
+        && request.resource.data.cover.size() <= 600
+        && request.resource.data.localTrackCount is int
+        && request.resource.data.localTrackCount >= 0
+        && request.resource.data.tracks is list
+        && request.resource.data.tracks.size() <= 500
+        && request.resource.data.updatedAt is int;
+    }
+
     match /users/{uid} {
       allow read, write: if request.auth != null && request.auth.uid == uid;
+    }
+
+    match /sharedPlaylists/{shareId} {
+      allow get: if resource.data.isPublic == true;
+      allow list: if false;
+      allow create: if request.auth != null && validSharedPlaylist();
+      allow update: if request.auth != null
+        && resource.data.ownerId == request.auth.uid
+        && validSharedPlaylist();
+      allow delete: if request.auth != null && resource.data.ownerId == request.auth.uid;
     }
   }
 }

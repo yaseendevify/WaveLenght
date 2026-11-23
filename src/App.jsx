@@ -507,10 +507,86 @@ function Row({ id, i, list, c }) {
   );
 }
 
+function SharedPlaylistView({ state }) {
+  const playlist = state.playlist;
+  const tracks = playlist?.tracks || [];
+  const duration = tracks.reduce((total, track) => total + (Number(track.dur) || 0), 0);
+  return (
+    <main className="shared-playlist-page">
+      <div className="shared-playlist-shell">
+        <a className="shared-playlist-brand" href={window.location.pathname}>Wavelength</a>
+        {state.status === "loading" ? (
+          <div className="shared-playlist-message">Loading playlist…</div>
+        ) : !playlist ? (
+          <div className="shared-playlist-message">
+            <h1>Playlist unavailable</h1>
+            <p>This playlist is private or its sharing link has been turned off.</p>
+          </div>
+        ) : (
+          <article className="shared-playlist-card">
+            <header className="shared-playlist-hero">
+              {playlist.cover ? <img src={playlist.cover} alt="" /> : <div className="shared-playlist-placeholder">♫</div>}
+              <div>
+                <small>PUBLIC PLAYLIST · READ ONLY</small>
+                <h1>{playlist.name}</h1>
+                {playlist.description && <p>{playlist.description}</p>}
+                <span>{tracks.length} songs · {Math.round(duration / 60)} min</span>
+              </div>
+            </header>
+            {playlist.localTrackCount > 0 && (
+              <p className="shared-playlist-note">{playlist.localTrackCount} device-only {playlist.localTrackCount === 1 ? "song is" : "songs are"} not included.</p>
+            )}
+            <ol className="shared-playlist-tracks">
+              {tracks.length ? tracks.map((track, index) => (
+                <li key={track.id || index}>
+                  <span className="shared-track-index">{index + 1}</span>
+                  {track.img ? <img src={track.img} alt="" loading="lazy" /> : <span className="shared-track-art">♫</span>}
+                  <span className="shared-track-copy"><b>{track.title || "Untitled song"}</b><small>{track.artist || "Unknown artist"}{track.album ? ` · ${track.album}` : ""}</small></span>
+                  <time>{track.dur ? `${Math.floor(track.dur / 60)}:${String(Math.floor(track.dur % 60)).padStart(2, "0")}` : ""}</time>
+                </li>
+              )) : <li className="shared-playlist-empty">This playlist has no shareable songs yet.</li>}
+            </ol>
+          </article>
+        )}
+      </div>
+    </main>
+  );
+}
+
+const sharedPlaylistData = (playlist, ownerId) => {
+  const trackData = new Map((playlist.trackData || []).map((track) => [track.id, track]));
+  const sourceTracks = (playlist.tracks || [])
+    .map((id) => trackData.get(id) || T[id])
+    .filter(Boolean);
+  const shareableTracks = sourceTracks.filter((track) => !track.file && track.g !== "local");
+  if (shareableTracks.length > 500) throw new Error("A shared playlist can contain up to 500 songs");
+  const text = (value, limit) => String(value || "").slice(0, limit);
+  return {
+    ownerId,
+    isPublic: true,
+    name: text(playlist.name, 70),
+    description: text(playlist.description, 240),
+    cover: text(playlist.cover, 600),
+    localTrackCount: sourceTracks.length - shareableTracks.length,
+    tracks: shareableTracks.map((track) => ({
+      id: text(track.id, 180),
+      title: text(track.title, 160),
+      artist: text(track.artist, 160),
+      album: text(track.album, 160),
+      img: text(track.img, 600),
+      g: text(track.g, 24),
+      dur: Math.max(0, Number(track.dur) || 0),
+    })),
+    updatedAt: Date.now(),
+  };
+};
+
 export default function App() {
   const [user, setUser] = useState(undefined),
     [guest, setGuest] = useState(false),
     [ready, setReady] = useState(false);
+  const [sharedId] = useState(() => new URLSearchParams(window.location.search).get("sharedPlaylist") || "");
+  const [sharedView, setSharedView] = useState({ status: "loading", playlist: null });
   const [d, setD] = useState(readLocal),
     [local, setLocal] = useState([]);
   const [v, setV] = useState({ n: "home" }),
@@ -629,21 +705,28 @@ export default function App() {
       img: playlist.cover || "",
     } : null;
   };
-  const savePlaylist = () => {
+  const savePlaylist = async () => {
     const name = (playlistForm?.name || "").trim();
     if (!name) return tl("Give your playlist a name first");
+    const previous = playlistForm.mode === "edit"
+      ? playlists.find((item) => item.id === playlistForm.id)
+      : null;
+    if (playlistForm.isPublic && !user) return tl("Sign in to publish a playlist");
+    if (previous?.isPublic && !playlistForm.isPublic && !user) return tl("Sign in to change playlist sharing");
+    let item;
     if (playlistForm.mode === "edit") {
-      setD((x) => ({
-        ...x,
-        playlists: (x.playlists || []).map((item) => item.id === playlistForm.id
-          ? { ...item, name, description: playlistForm.description.trim(), cover: playlistForm.cover.trim(), isPublic: !!playlistForm.isPublic, updatedAt: Date.now() }
-          : item),
-      }));
-      tl("Playlist updated");
+      item = {
+        ...previous,
+        name,
+        description: (playlistForm.description || "").trim(),
+        cover: (playlistForm.cover || "").trim(),
+        isPublic: !!playlistForm.isPublic,
+        updatedAt: Date.now(),
+      };
     } else {
       const id = "p_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
       const track = playlistPicker ? T[playlistPicker] : null;
-      const item = {
+      item = {
         id, name, description: playlistForm.description.trim(),
         cover: playlistForm.cover.trim(), isPublic: !!playlistForm.isPublic,
         tracks: track ? [track.id] : [],
@@ -654,19 +737,66 @@ export default function App() {
         }] : [],
         createdAt: Date.now(), updatedAt: Date.now(),
       };
+    }
+    try {
+      if (item.isPublic) {
+        item.shareId = item.shareId || fb.newSharedPlaylistId();
+        await fb.saveSharedPlaylist(item.shareId, sharedPlaylistData(item, user.uid));
+      } else if (previous?.isPublic && previous.shareId) {
+        await fb.deleteSharedPlaylist(previous.shareId);
+      }
+    } catch (error) {
+      return tl(error.message?.includes("500 songs") ? error.message : "Could not update playlist sharing");
+    }
+    if (playlistForm.mode === "edit") {
+      setD((x) => ({
+        ...x,
+        playlists: (x.playlists || []).map((current) => current.id === item.id ? item : current),
+      }));
+      tl(item.isPublic ? "Playlist updated · public link ready" : "Playlist updated");
+    } else {
       setD((x) => ({ ...x, playlists: [item, ...(x.playlists || [])] }));
       setPlaylistPicker(null);
-      nav("pl", id);
-      tl(track ? "Playlist created and song added" : "Playlist created");
+      nav("pl", item.id);
+      tl(item.tracks.length ? "Playlist created and song added" : "Playlist created");
     }
     setPlaylistForm(null);
   };
-  const deletePlaylist = (id) => {
+  const deletePlaylist = async (id) => {
     const item = playlists.find((p) => p.id === id);
     if (!item || !confirm('Delete "' + item.name + '"? This cannot be undone.')) return;
+    if (item.isPublic && !user) return tl("Sign in to delete a public playlist");
+    if (item.isPublic && item.shareId) {
+      try { await fb.deleteSharedPlaylist(item.shareId); }
+      catch { return tl("Could not turn off the public link"); }
+    }
     setD((x) => ({ ...x, playlists: (x.playlists || []).filter((p) => p.id !== id) }));
     nav("lib");
     tl("Playlist deleted");
+  };
+  const copyPlaylistLink = async (playlist) => {
+    if (!playlist?.isPublic || !playlist.shareId) return;
+    const link = new URL(window.location.pathname, window.location.origin);
+    link.searchParams.set("sharedPlaylist", playlist.shareId);
+    try {
+      await navigator.clipboard.writeText(link.toString());
+      tl("Public playlist link copied");
+    } catch {
+      try {
+        const field = document.createElement("textarea");
+        field.value = link.toString();
+        field.setAttribute("readonly", "");
+        field.style.position = "fixed";
+        field.style.opacity = "0";
+        document.body.appendChild(field);
+        field.select();
+        const copied = document.execCommand("copy");
+        field.remove();
+        tl(copied ? "Public playlist link copied" : "Could not copy the playlist link");
+      } catch {
+        tl("Could not copy the playlist link");
+      }
+    }
   };
   const addToPlaylist = (id) => {
     if (!playlists.length) {
@@ -677,6 +807,9 @@ export default function App() {
     setPlaylistPicker(id);
   };
   const choosePlaylist = (playlistId) => {
+    if (playlists.find((item) => item.id === playlistId)?.isPublic && !user) {
+      return tl("Sign in to update a public playlist");
+    }
     const track = T[playlistPicker];
     if (!track) return setPlaylistPicker(null);
     setD((x) => ({
@@ -695,22 +828,28 @@ export default function App() {
     setPlaylistPicker(null);
     tl("Added to playlist");
   };
-  const removePlaylistTrack = (playlistId, trackId) => setD((x) => ({
-    ...x,
-    playlists: (x.playlists || []).map((item) => item.id === playlistId
-      ? { ...item, tracks: (item.tracks || []).filter((id) => id !== trackId), trackData: (item.trackData || []).filter((track) => track.id !== trackId), updatedAt: Date.now() }
-      : item),
-  }));
-  const movePlaylistTrack = (playlistId, index, direction) => setD((x) => ({
-    ...x,
-    playlists: (x.playlists || []).map((item) => {
-      if (item.id !== playlistId) return item;
-      const tracks = [...(item.tracks || [])], next = index + direction;
-      if (next < 0 || next >= tracks.length) return item;
-      [tracks[index], tracks[next]] = [tracks[next], tracks[index]];
-      return { ...item, tracks, updatedAt: Date.now() };
-    }),
-  }));
+  const removePlaylistTrack = (playlistId, trackId) => {
+    if (playlists.find((item) => item.id === playlistId)?.isPublic && !user) return tl("Sign in to update a public playlist");
+    setD((x) => ({
+      ...x,
+      playlists: (x.playlists || []).map((item) => item.id === playlistId
+        ? { ...item, tracks: (item.tracks || []).filter((id) => id !== trackId), trackData: (item.trackData || []).filter((track) => track.id !== trackId), updatedAt: Date.now() }
+        : item),
+    }));
+  };
+  const movePlaylistTrack = (playlistId, index, direction) => {
+    if (playlists.find((item) => item.id === playlistId)?.isPublic && !user) return tl("Sign in to update a public playlist");
+    setD((x) => ({
+      ...x,
+      playlists: (x.playlists || []).map((item) => {
+        if (item.id !== playlistId) return item;
+        const tracks = [...(item.tracks || [])], next = index + direction;
+        if (next < 0 || next >= tracks.length) return item;
+        [tracks[index], tracks[next]] = [tracks[next], tracks[index]];
+        return { ...item, tracks, updatedAt: Date.now() };
+      }),
+    }));
+  };
   const toggleAlbumSave = (album) => {
     const entry = {
       id: String(album.id), name: album.name || album.title || "Album",
@@ -993,6 +1132,14 @@ export default function App() {
     return un;
   }, []);
   useEffect(() => {
+    if (!sharedId) return;
+    let active = true;
+    fb.loadSharedPlaylist(sharedId)
+      .then((playlist) => active && setSharedView({ status: "ready", playlist }))
+      .catch(() => active && setSharedView({ status: "ready", playlist: null }));
+    return () => { active = false; };
+  }, [sharedId]);
+  useEffect(() => {
     if (!user) {
       setReady(false);
       return;
@@ -1003,6 +1150,18 @@ export default function App() {
       .catch(() => tl("Could not load your account data"))
       .finally(() => setReady(true));
   }, [user]);
+  useEffect(() => {
+    if (!user || !ready) return;
+    const published = (d.playlists || []).filter((playlist) => playlist.isPublic && playlist.shareId);
+    if (!published.length) return;
+    const timer = setTimeout(() => {
+      Promise.resolve().then(() => Promise.all(published.map((playlist) => fb.saveSharedPlaylist(
+        playlist.shareId,
+        sharedPlaylistData(playlist, user.uid),
+      )))).catch(() => tl("Could not update the public playlist link"));
+    }, 700);
+    return () => clearTimeout(timer);
+  }, [d.playlists, user, ready]);
   useEffect(() => {
     try {
       localStorage.setItem("wl2", JSON.stringify(d));
@@ -1334,7 +1493,7 @@ export default function App() {
   const ty = useRef({ y: 0, top: 0 }),
     pv = useRef({ n: "home" });
   useEffect(() => {
-    if (v.n !== "home" || hm.loaded) return;
+    if (sharedId || v.n !== "home" || hm.loaded) return;
     let dead = false;
     loadShelves(homeJobs()).then(
       (sh) => !dead && setHm({ shelves: sh, loaded: true }),
@@ -1342,13 +1501,14 @@ export default function App() {
     return () => {
       dead = true;
     };
-  }, [v.n]);
+  }, [v.n, sharedId]);
   useEffect(() => {
     E.setFx(
       d.fx || { bass: 0, pre: 0, bands: [0, 0, 0, 0, 0], spatial: false },
     );
   }, [d.fx]);
 
+  if (sharedId) return <SharedPlaylistView state={sharedView} />;
   if (user === undefined) return null;
   if (!user && !guest) return <Auth onGuest={() => setGuest(true)} />;
 
@@ -2204,6 +2364,7 @@ export default function App() {
           }}>⇄ Shuffle</button>
           {customPlaylist && <>
             <button className="pill" onClick={() => setPlaylistForm({ ...customPlaylist, mode: "edit" })}>Edit details</button>
+            {customPlaylist.isPublic && customPlaylist.shareId && <button className="pill" onClick={() => copyPlaylistLink(customPlaylist)}>Copy public link</button>}
             <button className="pill danger-action" onClick={() => deletePlaylist(k)}>Delete</button>
           </>}
           {k === "local" && <button className="pill" onClick={removeAll}>Remove all</button>}
@@ -2775,7 +2936,8 @@ export default function App() {
             <label>Playlist name<input autoFocus maxLength={70} required placeholder="Give it a name" value={playlistForm.name || ""} onChange={(e) => setPlaylistForm((x) => ({ ...x, name: e.target.value }))} /></label>
             <label>Description<textarea rows={3} maxLength={240} placeholder="Add an optional description" value={playlistForm.description || ""} onChange={(e) => setPlaylistForm((x) => ({ ...x, description: e.target.value }))} /></label>
             <label>Cover image URL<input type="url" placeholder="https://…" value={playlistForm.cover || ""} onChange={(e) => setPlaylistForm((x) => ({ ...x, cover: e.target.value }))} /></label>
-            <label className="playlist-privacy"><input type="checkbox" checked={!!playlistForm.isPublic} onChange={(e) => setPlaylistForm((x) => ({ ...x, isPublic: e.target.checked }))} /> Public playlist</label>
+            <label className="playlist-privacy"><input type="checkbox" checked={!!playlistForm.isPublic} disabled={!user} onChange={(e) => setPlaylistForm((x) => ({ ...x, isPublic: e.target.checked }))} /> Public playlist</label>
+            <p className="playlist-privacy-note">{user ? "Anyone with this link can view the playlist. They cannot edit it." : "Sign in to publish a playlist and create a share link."}</p>
             <div className="library-modal-actions"><button type="button" className="pill" onClick={() => { setPlaylistForm(null); setPlaylistPicker(null); }}>Cancel</button><button type="submit" className="pri">{playlistForm.mode === "edit" ? "Save changes" : "Create playlist"}</button></div>
           </form>
         </div>
