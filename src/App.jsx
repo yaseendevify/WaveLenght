@@ -2237,6 +2237,14 @@ export default function App() {
               <button className="pp" onClick={toggle}>
                 {playing ? "❚❚" : "▶"}
               </button>
+              <button
+                className="ib queue-trigger queue-trigger-mobile"
+                title="Open queue"
+                aria-label="Open queue"
+                onClick={() => setQueueOpen(true)}
+              >
+                ☷{q.ids.length > q.i + 1 ? <small>{q.ids.length - q.i - 1}</small> : null}
+              </button>
               <button className="ib nxt" onClick={() => next(false)}>
                 ⏭
               </button>
