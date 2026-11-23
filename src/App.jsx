@@ -30,6 +30,12 @@ const DESI = {
   indian: { tags: "indian" },
   bollywood: { tags: "bollywood" },
   sufi: { tags: "sufi" },
+  pakistani: { tags: "pakistani" },
+  pakistan: { tags: "pakistan" },
+  pashto: { tags: "pashto" },
+  sindhi: { tags: "sindhi" },
+  saraiki: { tags: "saraiki" },
+  "coke studio pakistan": { tags: "coke studio pakistan" },
 };
 const tagP = (g) => DESI[g] || { tags: g };
 const jamSearch = async (p) => {
@@ -252,6 +258,14 @@ const homeJobs = () => [
   {
     t: "Trending on Audius",
     f: () => audGet("/tracks/trending", { time: "week", limit: 40 }),
+  },
+  {
+    t: "Pakistani music on Audius",
+    f: () => audSearch("Pakistani music"),
+  },
+  {
+    t: "Coke Studio Pakistan on Audius",
+    f: () => audSearch("Coke Studio Pakistan"),
   },
   ...(JKEY
     ? [
@@ -826,6 +840,16 @@ export default function App() {
                 ].flatMap((g) =>
                   J(g, { order: "popularity_week", ...tagP(g), limit: 40 }),
                 ),
+                ...[
+                  "Pakistani music",
+                  "Coke Studio Pakistan",
+                  "Pashto music",
+                  "Sindhi music",
+                  "Saraiki music",
+                ].map((query) => ({
+                  t: query + " · Audius",
+                  f: () => audSearch(query),
+                })),
               ];
         Promise.all(
           jobs.map((j) =>
@@ -1279,7 +1303,7 @@ export default function App() {
               <div className="err">{sr.err}</div>
             ) : (
               <>
-                <h2>Bollywood · JioSaavn</h2>
+                <h2>From JioSaavn</h2>
                 {sr.busy && !(sr.saavn || []).length ? (
                   <div className="empty">Searching JioSaavn…</div>
                 ) : (sr.saavn || []).length ? (
