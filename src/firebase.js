@@ -2,7 +2,7 @@ import {initializeApp} from 'firebase/app'
 import {getAuth,GoogleAuthProvider,signInWithPopup,signInWithRedirect,getRedirectResult,createUserWithEmailAndPassword,signInWithEmailAndPassword,signOut,onAuthStateChanged} from 'firebase/auth'
 import {getFirestore,doc,getDoc,setDoc} from 'firebase/firestore'
 const e=import.meta.env
-const cfg={apiKey:e.VITE_FIREBASE_API_KEY,authDomain:e.VITE_FIREBASE_AUTH_DOMAIN,projectId:e.VITE_FIREBASE_PROJECT_ID,appId:e.VITE_FIREBASE_APP_ID}
+const cfg={apiKey:e.VITE_FIREBASE_API_KEY,authDomain:import.meta.env.DEV?window.location.host:e.VITE_FIREBASE_AUTH_DOMAIN,projectId:e.VITE_FIREBASE_PROJECT_ID,appId:e.VITE_FIREBASE_APP_ID}
 export const configured=!!cfg.apiKey
 const app=configured?initializeApp(cfg):null
 const auth=app&&getAuth(app),fs=app&&getFirestore(app)
