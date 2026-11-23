@@ -1706,22 +1706,30 @@ export default function App() {
     ];
     const artistCards = (items) => (
       <div className="entity-grid artist-results">
-        {items.map((artist) => (
-          <button className="entity-card artist-result" key={artist.id} onClick={() => nav("artist", artist.id)}>
-            {artist.img ? <img src={artist.img} alt="" loading="lazy" /> : <span className="entity-placeholder">♪</span>}
-            <b>{artist.name}</b><small>{artist.role || "Artist"}</small>
-          </button>
-        ))}
+        {items.map((artist) => {
+          const followed = followedArtists.some((item) => item.id === String(artist.id));
+          return <div className="entity-card artist-result" key={artist.id}>
+            <button className="entity-open" onClick={() => nav("artist", artist.id)}>
+              {artist.img ? <img src={artist.img} alt="" loading="lazy" /> : <span className="entity-placeholder">♪</span>}
+              <b>{artist.name}</b><small>{artist.role || "Artist"}</small>
+            </button>
+            <button className="entity-save" onClick={() => toggleArtistFollow(artist)}>{followed ? "Following" : "＋ Follow"}</button>
+          </div>;
+        })}
       </div>
     );
     const albumCards = (items) => (
       <div className="entity-grid album-results">
-        {items.map((album) => (
-          <button className="entity-card album-result" key={album.id} onClick={() => nav("album", album.id)}>
-            {album.img ? <img src={album.img} alt="" loading="lazy" /> : <span className="entity-placeholder">♫</span>}
-            <b>{album.name}</b><small>{album.artist}{album.year ? " · " + album.year : ""}</small>
-          </button>
-        ))}
+        {items.map((album) => {
+          const saved = savedAlbums.some((item) => item.id === String(album.id));
+          return <div className="entity-card album-result" key={album.id}>
+            <button className="entity-open" onClick={() => nav("album", album.id)}>
+              {album.img ? <img src={album.img} alt="" loading="lazy" /> : <span className="entity-placeholder">♫</span>}
+              <b>{album.name}</b><small>{album.artist}{album.year ? " · " + album.year : ""}</small>
+            </button>
+            <button className="entity-save" onClick={() => toggleAlbumSave(album)}>{saved ? "Saved" : "＋ Save album"}</button>
+          </div>;
+        })}
       </div>
     );
     const showSongs = searchFilter === "all" || searchFilter === "songs";
@@ -1779,7 +1787,12 @@ export default function App() {
         <button className="detail-back" onClick={() => nav("search")}>← Back to search</button>
         <section className="detail-hero artist-hero">
           {artistImage ? <img src={artistImage} alt="" /> : <div className="entity-placeholder">♪</div>}
-          <div><small>ARTIST</small><h1>{artistName}</h1><p>{artist.role || "Artist"}{artist.followerCount ? " · " + Number(artist.followerCount).toLocaleString() + " followers" : ""}</p></div>
+          <div><small>ARTIST</small><h1>{artistName}</h1>
+            <p>{artist.role || "Artist"}{artist.followerCount ? " · " + Number(artist.followerCount).toLocaleString() + " followers" : ""}</p>
+            <button className="pill detail-save" onClick={() => toggleArtistFollow({ id: v.id, name: artistName, role: artist.role, img: artistImage })}>
+              {followedArtists.some((item) => item.id === String(v.id)) ? "Following ✓" : "＋ Follow artist"}
+            </button>
+          </div>
         </section>
         {detail.busy ? <div className="empty">Loading artist…</div> : detail.err ? <div className="err">{detail.err}</div> : <>
           <div className="hhead"><h2>Popular songs</h2></div>
@@ -1804,7 +1817,12 @@ export default function App() {
         <section className="detail-hero album-hero">
           {albumImage ? <img src={albumImage} alt="" /> : <div className="entity-placeholder">♫</div>}
           <div><small>ALBUM</small><h1>{albumName}</h1><p>{albumArtist}{album.year ? " · " + album.year : ""}{album.language ? " · " + album.language : ""}</p>
-            <button className="pri detail-play" disabled={!detail.songs.length} onClick={() => play(detail.songs, detail.songs[0])}>▶ Play album</button>
+            <div className="detail-actions">
+              <button className="pri detail-play" disabled={!detail.songs.length} onClick={() => play(detail.songs, detail.songs[0])}>▶ Play album</button>
+              <button className="pill detail-save" onClick={() => toggleAlbumSave({ id: v.id, name: albumName, artist: albumArtist, img: albumImage, year: album.year, language: album.language })}>
+                {savedAlbums.some((item) => item.id === String(v.id)) ? "Saved ✓" : "＋ Save album"}
+              </button>
+            </div>
           </div>
         </section>
         {detail.busy ? <div className="empty">Loading album…</div> : detail.err ? <div className="err">{detail.err}</div> : rows(detail.songs, "album-" + v.id)}
@@ -2047,18 +2065,40 @@ export default function App() {
   } else if (v.n === "lib")
     main = (
       <>
-        <h2>Your Library</h2>
-        {plKeys.map((k) => (
-          <Li key={k} k={k} />
-        ))}
-        <button
-          className="addm"
-          style={{ marginTop: 16, width: "100%" }}
-          onClick={() => fi.current.click()}
-        >
-          ＋ Add your music
-        </button>
-        <div style={{ marginTop: 10 }}>{acct}</div>
+        <div className="hhead library-heading">
+          <div><h2>Your Library</h2><p className="library-subtitle">Your music, your collections.</p></div>
+          <button className="pri" onClick={() => setPlaylistForm({ mode: "create", name: "", description: "", cover: "", isPublic: false })}>＋ Create playlist</button>
+        </div>
+        <div className="library-section">
+          <h3>Playlists & collections</h3>
+          <div className="library-collections">{plKeys.map((k) => <Li key={k} k={k} />)}</div>
+          <button className="addm library-add-music" onClick={() => fi.current.click()}>＋ Add your music</button>
+        </div>
+        <div className="library-section">
+          <div className="hhead"><h3>Saved albums</h3><span>{savedAlbums.length}</span></div>
+          {savedAlbums.length ? <div className="entity-grid album-results">
+            {savedAlbums.map((album) => <div className="entity-card album-result" key={album.id}>
+              <button className="entity-open" onClick={() => nav("album", album.id)}>
+                {album.img ? <img src={album.img} alt="" loading="lazy" /> : <span className="entity-placeholder">♫</span>}
+                <b>{album.name}</b><small>{album.artist}{album.year ? " · " + album.year : ""}</small>
+              </button>
+              <button className="entity-save" onClick={() => toggleAlbumSave(album)}>Remove</button>
+            </div>)}
+          </div> : <div className="empty">Albums you save will appear here.</div>}
+        </div>
+        <div className="library-section">
+          <div className="hhead"><h3>Followed artists</h3><span>{followedArtists.length}</span></div>
+          {followedArtists.length ? <div className="entity-grid artist-results">
+            {followedArtists.map((artist) => <div className="entity-card artist-result" key={artist.id}>
+              <button className="entity-open" onClick={() => nav("artist", artist.id)}>
+                {artist.img ? <img src={artist.img} alt="" loading="lazy" /> : <span className="entity-placeholder">♪</span>}
+                <b>{artist.name}</b><small>{artist.role || "Artist"}</small>
+              </button>
+              <button className="entity-save" onClick={() => toggleArtistFollow(artist)}>Unfollow</button>
+            </div>)}
+          </div> : <div className="empty">Artists you follow will appear here.</div>}
+        </div>
+        <div className="library-account">{acct}</div>
       </>
     );
   else if (v.n === "sp") {
@@ -2130,44 +2170,44 @@ export default function App() {
   } else {
     const k = v.id,
       p = meta(k),
+      customPlaylist = playlists.find((item) => item.id === k),
       ids = idsOf(k),
-      tot = ids.reduce((a, id) => a + (T[id].dur || 0), 0);
+      tot = ids.reduce((a, id) => a + (T[id]?.dur || 0), 0);
     main = (
       <>
-        <div className="hero">
-          <div className="big" style={bg(p)} />
+        <div className="hero playlist-hero">
+          <div className="big" style={bg(p || { hue: 185 })} />
           <div>
-            <small>COLLECTION</small>
-            <h1>{p.name}</h1>
-            <small>
-              {p.desc} · {ids.length} songs, {Math.round(tot / 60)} min
-            </small>
+            <small>{customPlaylist ? (customPlaylist.isPublic ? "PUBLIC PLAYLIST" : "PRIVATE PLAYLIST") : "COLLECTION"}</small>
+            <h1>{p?.name || "Collection"}</h1>
+            <small>{p?.desc || ""} · {ids.length} songs, {Math.round(tot / 60)} min</small>
           </div>
         </div>
         <div className="act">
-          <button
-            className="bigp"
-            onClick={() => ids.length && play(ids, ids[0])}
-          >
-            ▶
-          </button>
-          <button
-            className="pill"
-            onClick={() => {
-              if (!ids.length) return;
-              setD((x) => ({ ...x, shuf: true }));
-              go(ids[0], { ids: shuffle(ids), i: 0 });
-            }}
-          >
-            ⇄ Shuffle
-          </button>
-          {k === "local" && (
-            <button className="pill" onClick={removeAll}>
-              Remove all
-            </button>
-          )}
+          <button className="bigp" onClick={() => ids.length && play(ids, ids[0])}>▶</button>
+          <button className="pill" onClick={() => {
+            if (!ids.length) return;
+            setD((x) => ({ ...x, shuf: true }));
+            go(ids[0], { ids: shuffle(ids), i: 0 });
+          }}>⇄ Shuffle</button>
+          {customPlaylist && <>
+            <button className="pill" onClick={() => setPlaylistForm({ ...customPlaylist, mode: "edit" })}>Edit details</button>
+            <button className="pill danger-action" onClick={() => deletePlaylist(k)}>Delete</button>
+          </>}
+          {k === "local" && <button className="pill" onClick={removeAll}>Remove all</button>}
         </div>
-        {rows(ids, k)}
+        {customPlaylist ? (
+          ids.length ? ids.map((id, index) => (
+            <div className="playlist-track-row" key={id + "-" + index}>
+              <Row id={id} i={index} list={ids} c={c} />
+              <div className="playlist-track-actions">
+                <button className="ib" title="Move up" disabled={index === 0} onClick={() => movePlaylistTrack(k, index, -1)}>↑</button>
+                <button className="ib" title="Move down" disabled={index === ids.length - 1} onClick={() => movePlaylistTrack(k, index, 1)}>↓</button>
+                <button className="ib" title="Remove from playlist" onClick={() => removePlaylistTrack(k, id)}>✕</button>
+              </div>
+            </div>
+          )) : <div className="empty">This playlist is empty. Add songs from Search using the playlist icon.</div>
+        ) : rows(ids, k)}
       </>
     );
   }
@@ -2703,6 +2743,31 @@ export default function App() {
       <div id="toast" className={msg ? "on" : ""}>
         {msg}
       </div>
+      {playlistPicker && (
+        <div className="library-modal-backdrop" role="presentation" onMouseDown={(e) => e.target === e.currentTarget && setPlaylistPicker(null)}>
+          <div className="library-modal" role="dialog" aria-modal="true" aria-labelledby="playlist-picker-title">
+            <div className="library-modal-head"><h2 id="playlist-picker-title">Add to playlist</h2><button className="ib" onClick={() => setPlaylistPicker(null)} aria-label="Close">✕</button></div>
+            <p>Choose where to add <b>{T[playlistPicker]?.title || "this song"}</b>.</p>
+            {playlists.map((item) => <button className="playlist-choice" key={item.id} onClick={() => choosePlaylist(item.id)}>
+              <span className="playlist-choice-art" style={item.cover ? { backgroundImage: 'url("' + item.cover + '")' } : {}}>♫</span>
+              <span><b>{item.name}</b><small>{item.tracks?.length || 0} songs</small></span>
+            </button>)}
+            <button className="addm" onClick={() => setPlaylistForm({ mode: "create", name: "", description: "", cover: "", isPublic: false })}>＋ New playlist</button>
+          </div>
+        </div>
+      )}
+      {playlistForm && (
+        <div className="library-modal-backdrop" role="presentation" onMouseDown={(e) => e.target === e.currentTarget && setPlaylistForm(null)}>
+          <form className="library-modal" onSubmit={(e) => { e.preventDefault(); savePlaylist(); }}>
+            <div className="library-modal-head"><h2>{playlistForm.mode === "edit" ? "Edit playlist" : "Create playlist"}</h2><button type="button" className="ib" onClick={() => setPlaylistForm(null)} aria-label="Close">✕</button></div>
+            <label>Playlist name<input autoFocus maxLength={70} required placeholder="Give it a name" value={playlistForm.name || ""} onChange={(e) => setPlaylistForm((x) => ({ ...x, name: e.target.value }))} /></label>
+            <label>Description<textarea rows={3} maxLength={240} placeholder="Add an optional description" value={playlistForm.description || ""} onChange={(e) => setPlaylistForm((x) => ({ ...x, description: e.target.value }))} /></label>
+            <label>Cover image URL<input type="url" placeholder="https://…" value={playlistForm.cover || ""} onChange={(e) => setPlaylistForm((x) => ({ ...x, cover: e.target.value }))} /></label>
+            <label className="playlist-privacy"><input type="checkbox" checked={!!playlistForm.isPublic} onChange={(e) => setPlaylistForm((x) => ({ ...x, isPublic: e.target.checked }))} /> Public playlist</label>
+            <div className="library-modal-actions"><button type="button" className="pill" onClick={() => { setPlaylistForm(null); setPlaylistPicker(null); }}>Cancel</button><button type="submit" className="pri">{playlistForm.mode === "edit" ? "Save changes" : "Create playlist"}</button></div>
+          </form>
+        </div>
+      )}
       <input
         ref={fi}
         type="file"
