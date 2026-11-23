@@ -2371,3 +2371,144 @@ span.chip {
     height: 56px;
   }
 }
+
+
+/* Spotify-inspired desktop header refinement */
+@media (min-width: 821px) {
+  #top {
+    grid-template-columns: 48px minmax(280px, 560px) minmax(0, 1fr);
+    align-items: center;
+    gap: 18px;
+    min-height: 68px;
+    padding: 0 14px;
+  }
+
+  #top .lg {
+    width: 42px;
+    height: 42px;
+    display: grid;
+    place-items: center;
+    border-radius: 50%;
+    background: #242424;
+    color: var(--fg);
+    font-size: 21px;
+    font-weight: 800;
+    transition: background 160ms ease, transform 160ms ease;
+  }
+
+  #top .lg:hover {
+    background: #303030;
+    transform: scale(1.04);
+  }
+
+  #top .tc {
+    width: 100%;
+    max-width: 560px;
+    gap: 10px;
+    justify-self: center;
+  }
+
+  #top .hb {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    background: #242424;
+    color: var(--fg);
+    font-size: 20px;
+    transition: background 160ms ease, transform 160ms ease;
+  }
+
+  #top .hb:hover {
+    background: #303030;
+    transform: scale(1.04);
+  }
+
+  #top .tsearch {
+    height: 48px;
+    border: 1px solid transparent;
+    border-radius: 28px;
+    background: #242424;
+    padding: 0 16px;
+    transition: background 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+  }
+
+  #top .tsearch:hover {
+    background: #2b2b2b;
+  }
+
+  #top .tsearch:focus-within {
+    border-color: rgba(255, 255, 255, .42);
+    background: #2b2b2b;
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, .08);
+  }
+
+  #top .tsearch .si {
+    color: var(--fg);
+    opacity: .8;
+    font-size: 21px;
+  }
+
+  #top .tsearch input {
+    font-size: 14px;
+  }
+
+  #top .tr {
+    min-width: 0;
+    gap: 4px;
+    align-items: center;
+    justify-content: flex-end;
+  }
+
+  #top .tl {
+    min-height: 38px;
+    padding: 8px 10px;
+    border-radius: 20px;
+    color: #b3b3b3;
+    font-size: 13px;
+    font-weight: 650;
+    white-space: nowrap;
+    transition: color 150ms ease, background 150ms ease;
+  }
+
+  #top .tl:hover {
+    color: var(--fg);
+    background: rgba(255, 255, 255, .06);
+  }
+
+  #top .ic {
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    color: #b3b3b3;
+    transition: color 150ms ease, background 150ms ease;
+  }
+
+  #top .ic:hover,
+  #top .ic.on {
+    color: var(--fg);
+    background: rgba(255, 255, 255, .09);
+  }
+
+  #top .av {
+    width: 36px;
+    height: 36px;
+    margin-left: 4px;
+  }
+}
+
+@media (min-width: 821px) and (max-width: 1120px) {
+  #top {
+    grid-template-columns: 44px minmax(260px, 480px) minmax(0, 1fr);
+    gap: 10px;
+    padding: 0 8px;
+  }
+
+  #top .tl {
+    padding-inline: 7px;
+    font-size: 12px;
+  }
+
+  #top .tr {
+    gap: 1px;
+  }
+}
