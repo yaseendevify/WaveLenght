@@ -9,9 +9,8 @@ const T={},LOC=[];
  ['City Lights','Vera Moon','pop',112,59,'maj',[0,4,5,3],'triangle',.5,15,139],['Gold Teeth','K-Dawg','trap',140,55,'min',[0,0,5,6],'triangle',.4,50,122],
  ['Concrete Dreams','K-Dawg','trap',136,53,'min',[0,2,5,6],'sawtooth',.4,0,129],['Velvet Hours','Vera Moon','lofi',74,57,'min',[0,5,3,6],'triangle',.3,320,146]
 ].forEach((a,i)=>{const id='t'+(i+1);T[id]={id,title:a[0],artist:a[1],g:a[2],bpm:a[3],root:a[4],sc:a[5],prog:a[6],lead:a[7],dens:a[8],hue:a[9],dur:a[10],seed:i*7+3}});
-const PL={chill:{name:'Chill Vibes',desc:'Lo-fi beats to relax to',hue:35,ids:['t3','t4','t5','t14']},night:{name:'Night Drive',desc:'Synth waves for empty highways',hue:285,ids:['t1','t2','t10','t11']},
- focus:{name:'Focus Flow',desc:'Ambient soundscapes for deep work',hue:195,ids:['t6','t7','t8','t5']},pop:{name:'Pop Rewind',desc:'Feel-good hits all day',hue:340,ids:['t9','t10','t11']},bars:{name:'Beats & Bars',desc:'Heavy 808s and hard drums',hue:15,ids:['t12','t13']}};
+
 const art=t=>{const h=t.hue;return 'background:radial-gradient(circle at 72% 28%,hsl('+((h+150)%360)+' 85% 68%) 0 16%,transparent 17%),linear-gradient(135deg,hsl('+h+' 72% 52%),hsl('+((h+55)%360)+' 70% 26%))'};
 
 
-export {GL,SC,T,PL,art,LOC};
+export {GL,SC,T,art,LOC};
