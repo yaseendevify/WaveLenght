@@ -1714,6 +1714,60 @@ export default function App() {
     if (!shelf) return;
     shelf.scrollBy({ left: direction * shelf.clientWidth * 0.8, behavior: "smooth" });
   };
+  const personalRecommendations = (() => {
+    const artistWeights = new Map();
+    const genreWeights = new Map();
+    const artistTokens = (value) => String(value || "")
+      .split(/,|\bfeat(?:uring)?\.?\s+/i)
+      .map((name) => name.trim().toLowerCase())
+      .filter((name) => name && !["unknown", "unknown artist", "various artists"].includes(name));
+    const addSignal = (track, weight) => {
+      const genre = (track?.g || "").trim().toLowerCase();
+      artistTokens(track?.artist).forEach((artist) => {
+        artistWeights.set(artist, (artistWeights.get(artist) || 0) + weight);
+      });
+      // Provider names (Audius, JioSaavn, etc.) are sources, not useful genres.
+      if (genre && !["audius", "saavn", "gaana", "jamendo", "local"].includes(genre))
+        genreWeights.set(genre, (genreWeights.get(genre) || 0) + weight);
+    };
+    (d.hist || []).forEach((entry, index) => {
+      addSignal(T[entry.id] || entry, Math.max(1, 5 - index * 0.08));
+    });
+    [...liked].forEach((id) => addSignal(T[id], 5));
+    followedArtists.forEach((artist) => {
+      artistTokens(artist.name).forEach((name) => {
+        artistWeights.set(name, (artistWeights.get(name) || 0) + 7);
+      });
+    });
+    const topArtist = [...artistWeights].sort((a, b) => b[1] - a[1])[0];
+    const topGenre = [...genreWeights].sort((a, b) => b[1] - a[1])[0];
+    const played = new Set((d.hist || []).map((entry) => entry.id));
+    // Home and search discovery tracks live in T too, even though allIds()
+    // intentionally omits unliked streaming tracks from the user's library.
+    const catalogIds = new Set([
+      ...allIds(),
+      ...Object.keys(T).filter((id) => T[id].url || T[id].file),
+    ]);
+    const candidates = [...catalogIds]
+      .filter((id) => !liked.has(id) && !played.has(id))
+      .map((id) => {
+        const track = T[id];
+        const genre = (track.g || "").trim().toLowerCase();
+        return {
+          id,
+          score: artistTokens(track.artist).reduce((sum, artist) => sum + (artistWeights.get(artist) || 0), 0)
+            + (genreWeights.get(genre) || 0) * 0.65,
+        };
+      })
+      .filter((item) => item.score > 0)
+      .sort((a, b) => b.score - a.score || a.id.localeCompare(b.id))
+      .slice(0, 10)
+      .map((item) => item.id);
+    const reason = topArtist?.[1] >= (topGenre?.[1] || 0)
+      ? topArtist?.[0]
+      : topGenre?.[0];
+    return { ids: candidates, reason };
+  })();
   const artistPicks = (() => {
     const seen = new Set();
     return hm.shelves.flatMap((shelf) => shelf.ids).filter((id) => {
@@ -1761,6 +1815,41 @@ export default function App() {
             );
           })}
         </div>
+        {personalRecommendations.ids.length > 0 && (
+          <section className="personal-section" aria-label="Personalized recommendations">
+            <div className="hhead shelf-heading">
+              <h2>Picked for you</h2>
+              <span className="artist-note personal-note">
+                {personalRecommendations.reason
+                  ? `Based on your listening to ${personalRecommendations.reason}`
+                  : "Based on your likes and followed artists"}
+              </span>
+            </div>
+            <div className="shelf-wrap">
+              <button
+                type="button"
+                className="shelf-arrow shelf-arrow-left"
+                aria-label="Scroll recommendations left"
+                title="Scroll left"
+                onClick={(event) => scrollShelf(event, -1)}
+              >
+                ‹
+              </button>
+              <div className="shelf">
+                {personalRecommendations.ids.map((id) => tc(id, personalRecommendations.ids))}
+              </div>
+              <button
+                type="button"
+                className="shelf-arrow shelf-arrow-right"
+                aria-label="Scroll recommendations right"
+                title="Scroll right"
+                onClick={(event) => scrollShelf(event, 1)}
+              >
+                ›
+              </button>
+            </div>
+          </section>
+        )}
         {artistPicks.length > 0 && (
           <section className="artist-section">
             <div className="hhead">
