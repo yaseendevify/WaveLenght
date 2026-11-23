@@ -375,6 +375,9 @@ const KEYS = [
   "vol",
   "shuf",
   "rep",
+  "playlists",
+  "savedAlbums",
+  "followedArtists",
 ];
 const readLocal = () => {
   try {
@@ -481,6 +484,7 @@ function Row({ id, i, list, c }) {
         className="ib"
         data-q="1"
         title="Add to queue"
+        aria-label={"Add " + t.title + " to queue"}
         onClick={(e) => {
           e.stopPropagation();
           c.addQ(id);
@@ -488,14 +492,101 @@ function Row({ id, i, list, c }) {
       >
         ＋
       </button>
+      <button
+        className="ib playlist-add"
+        title="Add to playlist"
+        aria-label={"Add " + t.title + " to playlist"}
+        onClick={(e) => {
+          e.stopPropagation();
+          c.addToPlaylist(id);
+        }}
+      >
+        ☷
+      </button>
     </div>
   );
 }
+
+function SharedPlaylistView({ state }) {
+  const playlist = state.playlist;
+  const tracks = playlist?.tracks || [];
+  const duration = tracks.reduce((total, track) => total + (Number(track.dur) || 0), 0);
+  return (
+    <main className="shared-playlist-page">
+      <div className="shared-playlist-shell">
+        <a className="shared-playlist-brand" href={window.location.pathname}>Wavelength</a>
+        {state.status === "loading" ? (
+          <div className="shared-playlist-message">Loading playlist…</div>
+        ) : !playlist ? (
+          <div className="shared-playlist-message">
+            <h1>Playlist unavailable</h1>
+            <p>This playlist is private or its sharing link has been turned off.</p>
+          </div>
+        ) : (
+          <article className="shared-playlist-card">
+            <header className="shared-playlist-hero">
+              {playlist.cover ? <img src={playlist.cover} alt="" /> : <div className="shared-playlist-placeholder">♫</div>}
+              <div>
+                <small>PUBLIC PLAYLIST · READ ONLY</small>
+                <h1>{playlist.name}</h1>
+                {playlist.description && <p>{playlist.description}</p>}
+                <span>{tracks.length} songs · {Math.round(duration / 60)} min</span>
+              </div>
+            </header>
+            {playlist.localTrackCount > 0 && (
+              <p className="shared-playlist-note">{playlist.localTrackCount} device-only {playlist.localTrackCount === 1 ? "song is" : "songs are"} not included.</p>
+            )}
+            <ol className="shared-playlist-tracks">
+              {tracks.length ? tracks.map((track, index) => (
+                <li key={track.id || index}>
+                  <span className="shared-track-index">{index + 1}</span>
+                  {track.img ? <img src={track.img} alt="" loading="lazy" /> : <span className="shared-track-art">♫</span>}
+                  <span className="shared-track-copy"><b>{track.title || "Untitled song"}</b><small>{track.artist || "Unknown artist"}{track.album ? ` · ${track.album}` : ""}</small></span>
+                  <time>{track.dur ? `${Math.floor(track.dur / 60)}:${String(Math.floor(track.dur % 60)).padStart(2, "0")}` : ""}</time>
+                </li>
+              )) : <li className="shared-playlist-empty">This playlist has no shareable songs yet.</li>}
+            </ol>
+          </article>
+        )}
+      </div>
+    </main>
+  );
+}
+
+const sharedPlaylistData = (playlist, ownerId) => {
+  const trackData = new Map((playlist.trackData || []).map((track) => [track.id, track]));
+  const sourceTracks = (playlist.tracks || [])
+    .map((id) => trackData.get(id) || T[id])
+    .filter(Boolean);
+  const shareableTracks = sourceTracks.filter((track) => !track.file && track.g !== "local");
+  if (shareableTracks.length > 500) throw new Error("A shared playlist can contain up to 500 songs");
+  const text = (value, limit) => String(value || "").slice(0, limit);
+  return {
+    ownerId,
+    isPublic: true,
+    name: text(playlist.name, 70),
+    description: text(playlist.description, 240),
+    cover: text(playlist.cover, 600),
+    localTrackCount: sourceTracks.length - shareableTracks.length,
+    tracks: shareableTracks.map((track) => ({
+      id: text(track.id, 180),
+      title: text(track.title, 160),
+      artist: text(track.artist, 160),
+      album: text(track.album, 160),
+      img: text(track.img, 600),
+      g: text(track.g, 24),
+      dur: Math.max(0, Number(track.dur) || 0),
+    })),
+    updatedAt: Date.now(),
+  };
+};
 
 export default function App() {
   const [user, setUser] = useState(undefined),
     [guest, setGuest] = useState(false),
     [ready, setReady] = useState(false);
+  const [sharedId] = useState(() => new URLSearchParams(window.location.search).get("sharedPlaylist") || "");
+  const [sharedView, setSharedView] = useState({ status: "loading", playlist: null });
   const [d, setD] = useState(readLocal),
     [local, setLocal] = useState([]);
   const [v, setV] = useState({ n: "home" }),
@@ -507,7 +598,9 @@ export default function App() {
     [lsOpen, setLsOpen] = useState(false),
     [sortOpen, setSortOpen] = useState(false),
     [acctOpen, setAcctOpen] = useState(false),
-    [hm, setHm] = useState({ shelves: [], loaded: false });
+    [hm, setHm] = useState({ shelves: [], loaded: false }),
+    [playlistPicker, setPlaylistPicker] = useState(null),
+    [playlistForm, setPlaylistForm] = useState(null);
   const [cur, setCur] = useState(null),
     [playing, setPlaying] = useState(false),
     [q, setQ] = useState({ ids: [], i: 0 });
@@ -525,7 +618,10 @@ export default function App() {
     rep = d.rep || "off",
     shuf = !!d.shuf,
     vol = d.vol ?? 0.8,
-    sp = d.sp || [];
+    sp = d.sp || [],
+    playlists = d.playlists || [],
+    savedAlbums = d.savedAlbums || [],
+    followedArtists = d.followedArtists || [];
   (d.jam || []).forEach((j) => {
     if (!T[j.id])
       T[j.id] = {
@@ -553,6 +649,11 @@ export default function App() {
                 ? "gaana"
                 : "jamendo",
       };
+  });
+  (d.playlists || []).forEach((playlist) => {
+    (playlist.trackData || []).forEach((track) => {
+      if (track?.id && !T[track.id]) T[track.id] = { ...track };
+    });
   });
   const [dc, setDc] = useState({ shelves: [], busy: false, err: "" }),
     [dq, setDq] = useState(""),
@@ -588,14 +689,194 @@ export default function App() {
   };
   const allIds = () =>
     Object.keys(T).filter((id) => !T[id].url || liked.has(id));
-  const idsOf = (k) =>
-    k === "liked" ? [...liked].filter((x) => T[x]) : k === "local" ? local : [];
-  const meta = (k) =>
-    k === "liked"
-      ? { name: "Liked Songs", desc: "Songs you’ve hearted", hue: 280 }
-      : k === "local"
-        ? { name: "Your music", desc: "Files from your device", hue: 160 }
-        : null;
+  const idsOf = (k) => {
+    if (k === "liked") return [...liked].filter((x) => T[x]);
+    if (k === "local") return local;
+    return playlists.find((playlist) => playlist.id === k)?.tracks?.filter((id) => T[id]) || [];
+  };
+  const meta = (k) => {
+    if (k === "liked") return { name: "Liked Songs", desc: "Songs you’ve hearted", hue: 280 };
+    if (k === "local") return { name: "Your music", desc: "Files from your device", hue: 160 };
+    const playlist = playlists.find((item) => item.id === k);
+    return playlist ? {
+      name: playlist.name,
+      desc: playlist.description || "Playlist",
+      hue: 185,
+      img: playlist.cover || "",
+    } : null;
+  };
+  const savePlaylist = async () => {
+    const name = (playlistForm?.name || "").trim();
+    if (!name) return tl("Give your playlist a name first");
+    const previous = playlistForm.mode === "edit"
+      ? playlists.find((item) => item.id === playlistForm.id)
+      : null;
+    if (playlistForm.isPublic && !user) return tl("Sign in to publish a playlist");
+    if (previous?.isPublic && !playlistForm.isPublic && !user) return tl("Sign in to change playlist sharing");
+    let item;
+    if (playlistForm.mode === "edit") {
+      item = {
+        ...previous,
+        name,
+        description: (playlistForm.description || "").trim(),
+        cover: (playlistForm.cover || "").trim(),
+        isPublic: !!playlistForm.isPublic,
+        updatedAt: Date.now(),
+      };
+    } else {
+      const id = "p_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+      const track = playlistPicker ? T[playlistPicker] : null;
+      item = {
+        id, name, description: playlistForm.description.trim(),
+        cover: playlistForm.cover.trim(), isPublic: !!playlistForm.isPublic,
+        tracks: track ? [track.id] : [],
+        trackData: track ? [{
+          id: track.id, title: track.title, artist: track.artist, g: track.g,
+          url: track.url || "", dur: track.dur || 0, img: track.img || "",
+          artistImg: track.artistImg || "", hue: track.hue || 0, album: track.album || "",
+        }] : [],
+        createdAt: Date.now(), updatedAt: Date.now(),
+      };
+    }
+    try {
+      if (item.isPublic) {
+        item.shareId = item.shareId || fb.newSharedPlaylistId();
+        await fb.saveSharedPlaylist(item.shareId, sharedPlaylistData(item, user.uid));
+      } else if (previous?.isPublic && previous.shareId) {
+        await fb.deleteSharedPlaylist(previous.shareId);
+      }
+    } catch (error) {
+      return tl(error.message?.includes("500 songs") ? error.message : "Could not update playlist sharing");
+    }
+    if (playlistForm.mode === "edit") {
+      setD((x) => ({
+        ...x,
+        playlists: (x.playlists || []).map((current) => current.id === item.id ? item : current),
+      }));
+      tl(item.isPublic ? "Playlist updated · public link ready" : "Playlist updated");
+    } else {
+      setD((x) => ({ ...x, playlists: [item, ...(x.playlists || [])] }));
+      setPlaylistPicker(null);
+      nav("pl", item.id);
+      tl(item.tracks.length ? "Playlist created and song added" : "Playlist created");
+    }
+    setPlaylistForm(null);
+  };
+  const deletePlaylist = async (id) => {
+    const item = playlists.find((p) => p.id === id);
+    if (!item || !confirm('Delete "' + item.name + '"? This cannot be undone.')) return;
+    if (item.isPublic && !user) return tl("Sign in to delete a public playlist");
+    if (item.isPublic && item.shareId) {
+      try { await fb.deleteSharedPlaylist(item.shareId); }
+      catch { return tl("Could not turn off the public link"); }
+    }
+    setD((x) => ({ ...x, playlists: (x.playlists || []).filter((p) => p.id !== id) }));
+    nav("lib");
+    tl("Playlist deleted");
+  };
+  const copyPlaylistLink = async (playlist) => {
+    if (!playlist?.isPublic || !playlist.shareId) return;
+    const link = new URL(window.location.pathname, window.location.origin);
+    link.searchParams.set("sharedPlaylist", playlist.shareId);
+    try {
+      await navigator.clipboard.writeText(link.toString());
+      tl("Public playlist link copied");
+    } catch {
+      try {
+        const field = document.createElement("textarea");
+        field.value = link.toString();
+        field.setAttribute("readonly", "");
+        field.style.position = "fixed";
+        field.style.opacity = "0";
+        document.body.appendChild(field);
+        field.select();
+        const copied = document.execCommand("copy");
+        field.remove();
+        tl(copied ? "Public playlist link copied" : "Could not copy the playlist link");
+      } catch {
+        tl("Could not copy the playlist link");
+      }
+    }
+  };
+  const addToPlaylist = (id) => {
+    if (!playlists.length) {
+      setPlaylistPicker(id);
+      setPlaylistForm({ mode: "create", name: "", description: "", cover: "", isPublic: false });
+      return;
+    }
+    setPlaylistPicker(id);
+  };
+  const choosePlaylist = (playlistId) => {
+    if (playlists.find((item) => item.id === playlistId)?.isPublic && !user) {
+      return tl("Sign in to update a public playlist");
+    }
+    const track = T[playlistPicker];
+    if (!track) return setPlaylistPicker(null);
+    setD((x) => ({
+      ...x,
+      playlists: (x.playlists || []).map((item) => {
+        if (item.id !== playlistId) return item;
+        if ((item.tracks || []).includes(track.id)) return item;
+        const trackData = [...(item.trackData || []).filter((t) => t.id !== track.id), {
+          id: track.id, title: track.title, artist: track.artist, g: track.g,
+          url: track.url || "", dur: track.dur || 0, img: track.img || "",
+          artistImg: track.artistImg || "", hue: track.hue || 0, album: track.album || "",
+        }];
+        return { ...item, tracks: [...(item.tracks || []), track.id], trackData, updatedAt: Date.now() };
+      }),
+    }));
+    setPlaylistPicker(null);
+    tl("Added to playlist");
+  };
+  const removePlaylistTrack = (playlistId, trackId) => {
+    if (playlists.find((item) => item.id === playlistId)?.isPublic && !user) return tl("Sign in to update a public playlist");
+    setD((x) => ({
+      ...x,
+      playlists: (x.playlists || []).map((item) => item.id === playlistId
+        ? { ...item, tracks: (item.tracks || []).filter((id) => id !== trackId), trackData: (item.trackData || []).filter((track) => track.id !== trackId), updatedAt: Date.now() }
+        : item),
+    }));
+  };
+  const movePlaylistTrack = (playlistId, index, direction) => {
+    if (playlists.find((item) => item.id === playlistId)?.isPublic && !user) return tl("Sign in to update a public playlist");
+    setD((x) => ({
+      ...x,
+      playlists: (x.playlists || []).map((item) => {
+        if (item.id !== playlistId) return item;
+        const tracks = [...(item.tracks || [])], next = index + direction;
+        if (next < 0 || next >= tracks.length) return item;
+        [tracks[index], tracks[next]] = [tracks[next], tracks[index]];
+        return { ...item, tracks, updatedAt: Date.now() };
+      }),
+    }));
+  };
+  const toggleAlbumSave = (album) => {
+    const entry = {
+      id: String(album.id), name: album.name || album.title || "Album",
+      artist: album.artist || album.artists?.primary?.map((a) => a.name).filter(Boolean).join(", ") || "Various artists",
+      img: album.img || saavnImage(album.image) || album.image?.[0]?.url || "",
+      year: album.year || "", language: album.language || "",
+    };
+    setD((x) => ({
+      ...x,
+      savedAlbums: (x.savedAlbums || []).some((item) => item.id === entry.id)
+        ? x.savedAlbums.filter((item) => item.id !== entry.id)
+        : [entry, ...(x.savedAlbums || [])],
+    }));
+  };
+  const toggleArtistFollow = (artist) => {
+    const entry = {
+      id: String(artist.id), name: artist.name || artist.title || "Artist",
+      role: artist.role || "Artist",
+      img: artist.img || saavnImage(artist.image) || artist.image?.[0]?.url || "",
+    };
+    setD((x) => ({
+      ...x,
+      followedArtists: (x.followedArtists || []).some((item) => item.id === entry.id)
+        ? x.followedArtists.filter((item) => item.id !== entry.id)
+        : [entry, ...(x.followedArtists || [])],
+    }));
+  };
 
   /* player */
   const go = async (id, nq, auto = true) => {
@@ -775,7 +1056,7 @@ export default function App() {
     setQueueOpen(false);
   };
   R.current = { q, rep, cur, playing, next, toggle, prev, like, toggleShuf };
-  const c = { cur, playing, liked, play, like, addQ };
+  const c = { cur, playing, liked, play, like, addQ, addToPlaylist };
 
   /* local files */
   const addFiles = async (e) => {
@@ -851,6 +1132,14 @@ export default function App() {
     return un;
   }, []);
   useEffect(() => {
+    if (!sharedId) return;
+    let active = true;
+    fb.loadSharedPlaylist(sharedId)
+      .then((playlist) => active && setSharedView({ status: "ready", playlist }))
+      .catch(() => active && setSharedView({ status: "ready", playlist: null }));
+    return () => { active = false; };
+  }, [sharedId]);
+  useEffect(() => {
     if (!user) {
       setReady(false);
       return;
@@ -861,6 +1150,18 @@ export default function App() {
       .catch(() => tl("Could not load your account data"))
       .finally(() => setReady(true));
   }, [user]);
+  useEffect(() => {
+    if (!user || !ready) return;
+    const published = (d.playlists || []).filter((playlist) => playlist.isPublic && playlist.shareId);
+    if (!published.length) return;
+    const timer = setTimeout(() => {
+      Promise.resolve().then(() => Promise.all(published.map((playlist) => fb.saveSharedPlaylist(
+        playlist.shareId,
+        sharedPlaylistData(playlist, user.uid),
+      )))).catch(() => tl("Could not update the public playlist link"));
+    }, 700);
+    return () => clearTimeout(timer);
+  }, [d.playlists, user, ready]);
   useEffect(() => {
     try {
       localStorage.setItem("wl2", JSON.stringify(d));
@@ -1192,7 +1493,7 @@ export default function App() {
   const ty = useRef({ y: 0, top: 0 }),
     pv = useRef({ n: "home" });
   useEffect(() => {
-    if (v.n !== "home" || hm.loaded) return;
+    if (sharedId || v.n !== "home" || hm.loaded) return;
     let dead = false;
     loadShelves(homeJobs()).then(
       (sh) => !dead && setHm({ shelves: sh, loaded: true }),
@@ -1200,13 +1501,14 @@ export default function App() {
     return () => {
       dead = true;
     };
-  }, [v.n]);
+  }, [v.n, sharedId]);
   useEffect(() => {
     E.setFx(
       d.fx || { bass: 0, pre: 0, bands: [0, 0, 0, 0, 0], spatial: false },
     );
   }, [d.fx]);
 
+  if (sharedId) return <SharedPlaylistView state={sharedView} />;
   if (user === undefined) return null;
   if (!user && !guest) return <Auth onGuest={() => setGuest(true)} />;
 
@@ -1240,6 +1542,7 @@ export default function App() {
   };
   const Li = ({ k }) => {
     const p = meta(k);
+    if (!p) return null;
     return (
       <div className="li" title={p.name} onClick={() => nav("pl", k)}>
         <div className="a" style={bg(p)} />
@@ -1250,7 +1553,7 @@ export default function App() {
       </div>
     );
   };
-  const plKeys = ["liked", ...(local.length ? ["local"] : [])];
+  const plKeys = ["liked", ...playlists.map((item) => item.id), ...(local.length ? ["local"] : [])];
   const acct = user ? (
     <button
       className="addm"
@@ -1575,22 +1878,30 @@ export default function App() {
     ];
     const artistCards = (items) => (
       <div className="entity-grid artist-results">
-        {items.map((artist) => (
-          <button className="entity-card artist-result" key={artist.id} onClick={() => nav("artist", artist.id)}>
-            {artist.img ? <img src={artist.img} alt="" loading="lazy" /> : <span className="entity-placeholder">♪</span>}
-            <b>{artist.name}</b><small>{artist.role || "Artist"}</small>
-          </button>
-        ))}
+        {items.map((artist) => {
+          const followed = followedArtists.some((item) => item.id === String(artist.id));
+          return <div className="entity-card artist-result" key={artist.id}>
+            <button className="entity-open" onClick={() => nav("artist", artist.id)}>
+              {artist.img ? <img src={artist.img} alt="" loading="lazy" /> : <span className="entity-placeholder">♪</span>}
+              <b>{artist.name}</b><small>{artist.role || "Artist"}</small>
+            </button>
+            <button className="entity-save" onClick={() => toggleArtistFollow(artist)}>{followed ? "Following" : "＋ Follow"}</button>
+          </div>;
+        })}
       </div>
     );
     const albumCards = (items) => (
       <div className="entity-grid album-results">
-        {items.map((album) => (
-          <button className="entity-card album-result" key={album.id} onClick={() => nav("album", album.id)}>
-            {album.img ? <img src={album.img} alt="" loading="lazy" /> : <span className="entity-placeholder">♫</span>}
-            <b>{album.name}</b><small>{album.artist}{album.year ? " · " + album.year : ""}</small>
-          </button>
-        ))}
+        {items.map((album) => {
+          const saved = savedAlbums.some((item) => item.id === String(album.id));
+          return <div className="entity-card album-result" key={album.id}>
+            <button className="entity-open" onClick={() => nav("album", album.id)}>
+              {album.img ? <img src={album.img} alt="" loading="lazy" /> : <span className="entity-placeholder">♫</span>}
+              <b>{album.name}</b><small>{album.artist}{album.year ? " · " + album.year : ""}</small>
+            </button>
+            <button className="entity-save" onClick={() => toggleAlbumSave(album)}>{saved ? "Saved" : "＋ Save album"}</button>
+          </div>;
+        })}
       </div>
     );
     const showSongs = searchFilter === "all" || searchFilter === "songs";
@@ -1648,7 +1959,12 @@ export default function App() {
         <button className="detail-back" onClick={() => nav("search")}>← Back to search</button>
         <section className="detail-hero artist-hero">
           {artistImage ? <img src={artistImage} alt="" /> : <div className="entity-placeholder">♪</div>}
-          <div><small>ARTIST</small><h1>{artistName}</h1><p>{artist.role || "Artist"}{artist.followerCount ? " · " + Number(artist.followerCount).toLocaleString() + " followers" : ""}</p></div>
+          <div><small>ARTIST</small><h1>{artistName}</h1>
+            <p>{artist.role || "Artist"}{artist.followerCount ? " · " + Number(artist.followerCount).toLocaleString() + " followers" : ""}</p>
+            <button className="pill detail-save" onClick={() => toggleArtistFollow({ id: v.id, name: artistName, role: artist.role, img: artistImage })}>
+              {followedArtists.some((item) => item.id === String(v.id)) ? "Following ✓" : "＋ Follow artist"}
+            </button>
+          </div>
         </section>
         {detail.busy ? <div className="empty">Loading artist…</div> : detail.err ? <div className="err">{detail.err}</div> : <>
           <div className="hhead"><h2>Popular songs</h2></div>
@@ -1673,7 +1989,12 @@ export default function App() {
         <section className="detail-hero album-hero">
           {albumImage ? <img src={albumImage} alt="" /> : <div className="entity-placeholder">♫</div>}
           <div><small>ALBUM</small><h1>{albumName}</h1><p>{albumArtist}{album.year ? " · " + album.year : ""}{album.language ? " · " + album.language : ""}</p>
-            <button className="pri detail-play" disabled={!detail.songs.length} onClick={() => play(detail.songs, detail.songs[0])}>▶ Play album</button>
+            <div className="detail-actions">
+              <button className="pri detail-play" disabled={!detail.songs.length} onClick={() => play(detail.songs, detail.songs[0])}>▶ Play album</button>
+              <button className="pill detail-save" onClick={() => toggleAlbumSave({ id: v.id, name: albumName, artist: albumArtist, img: albumImage, year: album.year, language: album.language })}>
+                {savedAlbums.some((item) => item.id === String(v.id)) ? "Saved ✓" : "＋ Save album"}
+              </button>
+            </div>
           </div>
         </section>
         {detail.busy ? <div className="empty">Loading album…</div> : detail.err ? <div className="err">{detail.err}</div> : rows(detail.songs, "album-" + v.id)}
@@ -1916,18 +2237,40 @@ export default function App() {
   } else if (v.n === "lib")
     main = (
       <>
-        <h2>Your Library</h2>
-        {plKeys.map((k) => (
-          <Li key={k} k={k} />
-        ))}
-        <button
-          className="addm"
-          style={{ marginTop: 16, width: "100%" }}
-          onClick={() => fi.current.click()}
-        >
-          ＋ Add your music
-        </button>
-        <div style={{ marginTop: 10 }}>{acct}</div>
+        <div className="hhead library-heading">
+          <div><h2>Your Library</h2><p className="library-subtitle">Your music, your collections.</p></div>
+          <button className="pri" onClick={() => setPlaylistForm({ mode: "create", name: "", description: "", cover: "", isPublic: false })}>＋ Create playlist</button>
+        </div>
+        <div className="library-section">
+          <h3>Playlists & collections</h3>
+          <div className="library-collections">{plKeys.map((k) => <Li key={k} k={k} />)}</div>
+          <button className="addm library-add-music" onClick={() => fi.current.click()}>＋ Add your music</button>
+        </div>
+        <div className="library-section">
+          <div className="hhead"><h3>Saved albums</h3><span>{savedAlbums.length}</span></div>
+          {savedAlbums.length ? <div className="entity-grid album-results">
+            {savedAlbums.map((album) => <div className="entity-card album-result" key={album.id}>
+              <button className="entity-open" onClick={() => nav("album", album.id)}>
+                {album.img ? <img src={album.img} alt="" loading="lazy" /> : <span className="entity-placeholder">♫</span>}
+                <b>{album.name}</b><small>{album.artist}{album.year ? " · " + album.year : ""}</small>
+              </button>
+              <button className="entity-save" onClick={() => toggleAlbumSave(album)}>Remove</button>
+            </div>)}
+          </div> : <div className="empty">Albums you save will appear here.</div>}
+        </div>
+        <div className="library-section">
+          <div className="hhead"><h3>Followed artists</h3><span>{followedArtists.length}</span></div>
+          {followedArtists.length ? <div className="entity-grid artist-results">
+            {followedArtists.map((artist) => <div className="entity-card artist-result" key={artist.id}>
+              <button className="entity-open" onClick={() => nav("artist", artist.id)}>
+                {artist.img ? <img src={artist.img} alt="" loading="lazy" /> : <span className="entity-placeholder">♪</span>}
+                <b>{artist.name}</b><small>{artist.role || "Artist"}</small>
+              </button>
+              <button className="entity-save" onClick={() => toggleArtistFollow(artist)}>Unfollow</button>
+            </div>)}
+          </div> : <div className="empty">Artists you follow will appear here.</div>}
+        </div>
+        <div className="library-account">{acct}</div>
       </>
     );
   else if (v.n === "sp") {
@@ -1999,44 +2342,45 @@ export default function App() {
   } else {
     const k = v.id,
       p = meta(k),
+      customPlaylist = playlists.find((item) => item.id === k),
       ids = idsOf(k),
-      tot = ids.reduce((a, id) => a + (T[id].dur || 0), 0);
+      tot = ids.reduce((a, id) => a + (T[id]?.dur || 0), 0);
     main = (
       <>
-        <div className="hero">
-          <div className="big" style={bg(p)} />
+        <div className="hero playlist-hero">
+          <div className="big" style={bg(p || { hue: 185 })} />
           <div>
-            <small>COLLECTION</small>
-            <h1>{p.name}</h1>
-            <small>
-              {p.desc} · {ids.length} songs, {Math.round(tot / 60)} min
-            </small>
+            <small>{customPlaylist ? (customPlaylist.isPublic ? "PUBLIC PLAYLIST" : "PRIVATE PLAYLIST") : "COLLECTION"}</small>
+            <h1>{p?.name || "Collection"}</h1>
+            <small>{p?.desc || ""} · {ids.length} songs, {Math.round(tot / 60)} min</small>
           </div>
         </div>
         <div className="act">
-          <button
-            className="bigp"
-            onClick={() => ids.length && play(ids, ids[0])}
-          >
-            ▶
-          </button>
-          <button
-            className="pill"
-            onClick={() => {
-              if (!ids.length) return;
-              setD((x) => ({ ...x, shuf: true }));
-              go(ids[0], { ids: shuffle(ids), i: 0 });
-            }}
-          >
-            ⇄ Shuffle
-          </button>
-          {k === "local" && (
-            <button className="pill" onClick={removeAll}>
-              Remove all
-            </button>
-          )}
+          <button className="bigp" onClick={() => ids.length && play(ids, ids[0])}>▶</button>
+          <button className="pill" onClick={() => {
+            if (!ids.length) return;
+            setD((x) => ({ ...x, shuf: true }));
+            go(ids[0], { ids: shuffle(ids), i: 0 });
+          }}>⇄ Shuffle</button>
+          {customPlaylist && <>
+            <button className="pill" onClick={() => setPlaylistForm({ ...customPlaylist, mode: "edit" })}>Edit details</button>
+            {customPlaylist.isPublic && customPlaylist.shareId && <button className="pill" onClick={() => copyPlaylistLink(customPlaylist)}>Copy public link</button>}
+            <button className="pill danger-action" onClick={() => deletePlaylist(k)}>Delete</button>
+          </>}
+          {k === "local" && <button className="pill" onClick={removeAll}>Remove all</button>}
         </div>
-        {rows(ids, k)}
+        {customPlaylist ? (
+          ids.length ? ids.map((id, index) => (
+            <div className="playlist-track-row" key={id + "-" + index}>
+              <Row id={id} i={index} list={ids} c={c} />
+              <div className="playlist-track-actions">
+                <button className="ib" title="Move up" disabled={index === 0} onClick={() => movePlaylistTrack(k, index, -1)}>↑</button>
+                <button className="ib" title="Move down" disabled={index === ids.length - 1} onClick={() => movePlaylistTrack(k, index, 1)}>↓</button>
+                <button className="ib" title="Remove from playlist" onClick={() => removePlaylistTrack(k, id)}>✕</button>
+              </div>
+            </div>
+          )) : <div className="empty">This playlist is empty. Add songs from Search using the playlist icon.</div>
+        ) : rows(ids, k)}
       </>
     );
   }
@@ -2572,6 +2916,32 @@ export default function App() {
       <div id="toast" className={msg ? "on" : ""}>
         {msg}
       </div>
+      {playlistPicker && (
+        <div className="library-modal-backdrop" role="presentation" onMouseDown={(e) => e.target === e.currentTarget && setPlaylistPicker(null)}>
+          <div className="library-modal" role="dialog" aria-modal="true" aria-labelledby="playlist-picker-title">
+            <div className="library-modal-head"><h2 id="playlist-picker-title">Add to playlist</h2><button className="ib" onClick={() => setPlaylistPicker(null)} aria-label="Close">✕</button></div>
+            <p>Choose where to add <b>{T[playlistPicker]?.title || "this song"}</b>.</p>
+            {playlists.map((item) => <button className="playlist-choice" key={item.id} onClick={() => choosePlaylist(item.id)}>
+              <span className="playlist-choice-art" style={item.cover ? { backgroundImage: 'url("' + item.cover + '")' } : {}}>♫</span>
+              <span><b>{item.name}</b><small>{item.tracks?.length || 0} songs</small></span>
+            </button>)}
+            <button className="addm" onClick={() => setPlaylistForm({ mode: "create", name: "", description: "", cover: "", isPublic: false })}>＋ New playlist</button>
+          </div>
+        </div>
+      )}
+      {playlistForm && (
+        <div className="library-modal-backdrop" role="presentation" onMouseDown={(e) => e.target === e.currentTarget && setPlaylistForm(null)}>
+          <form className="library-modal" onSubmit={(e) => { e.preventDefault(); savePlaylist(); }}>
+            <div className="library-modal-head"><h2>{playlistForm.mode === "edit" ? "Edit playlist" : "Create playlist"}</h2><button type="button" className="ib" onClick={() => setPlaylistForm(null)} aria-label="Close">✕</button></div>
+            <label>Playlist name<input autoFocus maxLength={70} required placeholder="Give it a name" value={playlistForm.name || ""} onChange={(e) => setPlaylistForm((x) => ({ ...x, name: e.target.value }))} /></label>
+            <label>Description<textarea rows={3} maxLength={240} placeholder="Add an optional description" value={playlistForm.description || ""} onChange={(e) => setPlaylistForm((x) => ({ ...x, description: e.target.value }))} /></label>
+            <label>Cover image URL<input type="url" placeholder="https://…" value={playlistForm.cover || ""} onChange={(e) => setPlaylistForm((x) => ({ ...x, cover: e.target.value }))} /></label>
+            <label className="playlist-privacy"><input type="checkbox" checked={!!playlistForm.isPublic} disabled={!user} onChange={(e) => setPlaylistForm((x) => ({ ...x, isPublic: e.target.checked }))} /> Public playlist</label>
+            <p className="playlist-privacy-note">{user ? "Anyone with this link can view the playlist. They cannot edit it." : "Sign in to publish a playlist and create a share link."}</p>
+            <div className="library-modal-actions"><button type="button" className="pill" onClick={() => { setPlaylistForm(null); setPlaylistPicker(null); }}>Cancel</button><button type="submit" className="pri">{playlistForm.mode === "edit" ? "Save changes" : "Create playlist"}</button></div>
+          </form>
+        </div>
+      )}
       <input
         ref={fi}
         type="file"
