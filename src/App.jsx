@@ -1670,7 +1670,7 @@ export default function App() {
         {detail.busy ? <div className="empty">Loading album…</div> : detail.err ? <div className="err">{detail.err}</div> : rows(detail.songs, "album-" + v.id)}
       </>
     );
-  }  } else if (v.n === "bollywood") {
+  } else if (v.n === "bollywood") {
     main = (
       <>
         <div className="hhead">
