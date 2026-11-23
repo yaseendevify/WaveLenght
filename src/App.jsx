@@ -232,7 +232,32 @@ const loadShelves = (jobs) =>
         .catch((e) => ({ t: j.t, ids: [], e: String(e.message || e) })),
     ),
   );
+const homeSearch = async (query, artistMatch) => {
+  const results = await Promise.allSettled([
+    saavnSearchSongs(query),
+    gaanaSearchSongs(query),
+    audSearch(query),
+  ]);
+  const ids = results.flatMap((result) =>
+    result.status === "fulfilled" ? result.value : [],
+  );
+  return artistMatch
+    ? ids.filter((id) => (T[id]?.artist || "").toLowerCase().includes(artistMatch))
+    : ids;
+};
 const homeJobs = () => [
+  {
+    t: "Pakistani Music",
+    f: () => homeSearch("Pakistani songs"),
+  },
+  {
+    t: "Arijit Singh",
+    f: () => homeSearch("Arijit Singh songs", "arijit"),
+  },
+  {
+    t: "KK",
+    f: () => homeSearch("KK singer songs", "kk"),
+  },
   ...(JKEY
     ? [
         {
@@ -244,10 +269,6 @@ const homeJobs = () => [
   {
     t: "Trending on Audius",
     f: () => audGet("/tracks/trending", { time: "week", limit: 40 }),
-  },
-  {
-    t: "Pakistani music on Audius",
-    f: () => audSearch("Pakistani music"),
   },
   {
     t: "Coke Studio Pakistan on Audius",
@@ -1259,6 +1280,13 @@ export default function App() {
       </div>
     );
   };
+  const scrollShelf = (event, direction) => {
+    const shelf = event.currentTarget
+      .closest(".shelf-wrap")
+      ?.querySelector(".shelf, .artist-shelf");
+    if (!shelf) return;
+    shelf.scrollBy({ left: direction * shelf.clientWidth * 0.8, behavior: "smooth" });
+  };
   const artistPicks = (() => {
     const seen = new Set();
     return hm.shelves.flatMap((shelf) => shelf.ids).filter((id) => {
@@ -1312,7 +1340,17 @@ export default function App() {
               <h2>Popular artists</h2>
               <span className="artist-note">Discover your next favourite</span>
             </div>
-            <div className="artist-shelf">
+            <div className="shelf-wrap artist-wrap">
+              <button
+                type="button"
+                className="shelf-arrow shelf-arrow-left"
+                aria-label="Scroll artists left"
+                title="Scroll left"
+                onClick={(event) => scrollShelf(event, -1)}
+              >
+                ‹
+              </button>
+              <div className="artist-shelf">
               {artistPicks.map(({ id, artist }) => {
                 const track = T[id];
                 return (
@@ -1334,6 +1372,16 @@ export default function App() {
                   </button>
                 );
               })}
+              </div>
+              <button
+                type="button"
+                className="shelf-arrow shelf-arrow-right"
+                aria-label="Scroll artists right"
+                title="Scroll right"
+                onClick={(event) => scrollShelf(event, 1)}
+              >
+                ›
+              </button>
             </div>
           </section>
         )}
@@ -1341,8 +1389,30 @@ export default function App() {
           .filter((x) => x.ids.length)
           .map((sh) => (
             <div key={sh.t}>
-              <h2>{sh.t}</h2>
-              <div className="shelf">{sh.ids.map((id) => tc(id, sh.ids))}</div>
+              <div className="hhead shelf-heading">
+                <h2>{sh.t}</h2>
+              </div>
+              <div className="shelf-wrap">
+                <button
+                  type="button"
+                  className="shelf-arrow shelf-arrow-left"
+                  aria-label={"Scroll " + sh.t + " left"}
+                  title="Scroll left"
+                  onClick={(event) => scrollShelf(event, -1)}
+                >
+                  ‹
+                </button>
+                <div className="shelf">{sh.ids.map((id) => tc(id, sh.ids))}</div>
+                <button
+                  type="button"
+                  className="shelf-arrow shelf-arrow-right"
+                  aria-label={"Scroll " + sh.t + " right"}
+                  title="Scroll right"
+                  onClick={(event) => scrollShelf(event, 1)}
+                >
+                  ›
+                </button>
+              </div>
             </div>
           ))}
         <h2>Your library</h2>
