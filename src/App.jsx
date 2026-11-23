@@ -499,7 +499,9 @@ export default function App() {
       err: "",
     }),
     [bq, setBq] = useState(""),
-    [br, setBr] = useState({ ids: [], busy: false, err: "" });
+    [br, setBr] = useState({ ids: [], busy: false, err: "" }),
+    [pq, setPq] = useState(""),
+    [pr, setPr] = useState({ ids: [], busy: false, err: "" });
   const tl = (m) => {
     setMsg(m);
     clearTimeout(tm.current);
@@ -535,7 +537,6 @@ export default function App() {
         tl(String(e.message || e));
       }
     }
-    setYtCur(null);
     setCur(t);
     setQ(nq);
     setPlaying(auto);
@@ -989,6 +990,53 @@ export default function App() {
     };
   }, [v.n, bq]);
 
+  useEffect(() => {
+    if (v.n !== "pakistani") return;
+    const query = pq.trim() || "Pakistani music";
+    let dead = false;
+    setPr((x) => ({ ...x, busy: true, err: "" }));
+    const h = setTimeout(() => {
+      Promise.allSettled([
+        saavnSearchSongs(query),
+        gaanaSearchSongs(query),
+        audSearch(query),
+      ]).then(([saavn, gaana, audius]) => {
+        if (dead) return;
+        const ids = [
+          ...(saavn.status === "fulfilled" ? saavn.value : []),
+          ...(gaana.status === "fulfilled" ? gaana.value : []),
+          ...(audius.status === "fulfilled" ? audius.value : []),
+        ];
+        const seen = new Set();
+        const unique = ids.filter((id) => {
+          const t = T[id];
+          const key = (t.title + "|" + t.artist)
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, " ")
+            .trim();
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
+        const failures = [saavn, gaana, audius].filter((x) => x.status === "rejected");
+        setPr({
+          ids: unique,
+          busy: false,
+          err: unique.length
+            ? ""
+            : String(
+                failures[0]?.reason?.message ||
+                  "No results from Pakistani music sources. Try another search.",
+              ),
+        });
+      });
+    }, pq.trim() ? 350 : 0);
+    return () => {
+      dead = true;
+      clearTimeout(h);
+    };
+  }, [v.n, pq]);
+
   const ty = useRef({ y: 0, top: 0 }),
     pv = useRef({ n: "home" });
   useEffect(() => {
@@ -1426,6 +1474,65 @@ export default function App() {
         </div>
       </>
     );
+  } else if (v.n === "pakistani") {
+    main = (
+      <>
+        <div className="hhead">
+          <div>
+            <h2>Pakistani Music</h2>
+            <div className="empty" style={{ padding: "0 0 12px" }}>
+              Discover Pakistani artists, Urdu and regional music, and Coke Studio.
+            </div>
+          </div>
+        </div>
+        <div className="sbox">
+          ⌕
+          <input
+            placeholder="Search Pakistani songs, artists, Coke Studio…"
+            value={pq}
+            onChange={(e) => setPq(e.target.value)}
+          />
+          {pq && (
+            <button className="ib" onClick={() => setPq("")}>
+              ×
+            </button>
+          )}
+        </div>
+        <div className="chips" style={{ margin: "12px 0 18px" }}>
+          {[
+            "Coke Studio Pakistan",
+            "Atif Aslam",
+            "Rahat Fateh Ali Khan",
+            "Young Stunners",
+            "Ali Zafar",
+            "Pashto music",
+            "Sindhi music",
+            "Saraiki music",
+          ].map((term) => (
+            <button key={term} className="chip" onClick={() => setPq(term)}>
+              {term}
+            </button>
+          ))}
+        </div>
+        {pr.err ? <div className="err">{pr.err}</div> : null}
+        {pr.busy && !pr.ids.length ? (
+          <div className="empty">Loading Pakistani music…</div>
+        ) : null}
+        {!pr.busy && !pr.ids.length && !pr.err ? (
+          <div className="empty">No songs found. Try another search.</div>
+        ) : null}
+        {pr.ids.length > 0 && (
+          <>
+            {pq.trim() ? <h2>Search results</h2> : <h2>Pakistani songs</h2>}
+            {rows(pr.ids, "pakistani-")}
+          </>
+        )}
+        <div className="empty" style={{ paddingTop: 16 }}>
+          Results combine JioSaavn, Gaana, and Audius. Availability varies by
+          catalog and region.
+        </div>
+      </>
+    );
   } else if (v.n === "disc") {
     const multi = !dq.trim() && !dtag;
     main = (
@@ -1753,6 +1860,9 @@ export default function App() {
             <button className="tl" onClick={() => nav("bollywood")}>
               ♫<span>Bollywood</span>
             </button>
+            <button className="tl" onClick={() => nav("pakistani")}>
+              ♫<span>Pakistani</span>
+            </button>
             <button className="tl" onClick={() => nav("sp")}>
               ♫<span>Spotify</span>
             </button>
@@ -1768,7 +1878,21 @@ export default function App() {
               title="History"
               onClick={() => nav("hist")}
             >
-              🕘
+              <svg
+                viewBox="0 0 24 24"
+                width="18"
+                height="18"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M3 12a9 9 0 1 0 2.64-6.36L3 8" />
+                <path d="M3 3v5h5" />
+                <path d="M12 7v5l3 2" />
+              </svg>
             </button>
             {user && (
               <div className="sw">
@@ -2024,6 +2148,7 @@ export default function App() {
           <NavItem n="home" icon="⌂" label="Home" />
           <NavItem n="search" icon="⌕" label="Search" />
           <NavItem n="bollywood" icon="♫" label="Bollywood" />
+          <NavItem n="pakistani" icon="♫" label="Pakistan" />
           <NavItem n="disc" icon="✦" label="Discover" />
           <NavItem n="sp" icon="♫" label="Spotify" />
           <NavItem n="lib" icon="☰" label="Library" />
