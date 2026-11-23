@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { GL, T, PL, art } from "./data.js";
+import { GL, T, art } from "./data.js";
 import * as E from "./engine.js";
 import { putFile, getFile, delFile, allFiles } from "./store.js";
 import * as fb from "./firebase.js";
@@ -519,15 +519,13 @@ export default function App() {
       ? [...liked].filter((x) => T[x])
       : k === "local"
         ? local
-        : PL[k]
-          ? PL[k].ids
-          : [];
+        : [];
   const meta = (k) =>
     k === "liked"
       ? { name: "Liked Songs", desc: "Songs you’ve hearted", hue: 280 }
       : k === "local"
         ? { name: "Your music", desc: "Files from your device", hue: 160 }
-        : PL[k];
+        : null;
 
   /* player */
   const go = async (id, nq, auto = true) => {
@@ -1049,16 +1047,12 @@ export default function App() {
         <div className="a" style={bg(p)} />
         <div>
           <b>{p.name}</b>
-          <small>Playlist • {idsOf(k).length} songs</small>
+          <small>Collection • {idsOf(k).length} songs</small>
         </div>
       </div>
     );
   };
-  const plKeys = [
-    ...Object.keys(PL),
-    "liked",
-    ...(local.length ? ["local"] : []),
-  ];
+  const plKeys = ["liked", ...(local.length ? ["local"] : [])];
   const acct = user ? (
     <button
       className="addm"
@@ -1256,7 +1250,7 @@ export default function App() {
               <div className="shelf">{sh.ids.map((id) => tc(id, sh.ids))}</div>
             </div>
           ))}
-        <h2>Your playlists</h2>
+        <h2>Your library</h2>
         <div className="shelf">
           {plKeys.map((k) => (
             <Card key={k} k={k} />
@@ -1758,7 +1752,7 @@ export default function App() {
         <div className="hero">
           <div className="big" style={bg(p)} />
           <div>
-            <small>PLAYLIST</small>
+            <small>COLLECTION</small>
             <h1>{p.name}</h1>
             <small>
               {p.desc} · {ids.length} songs, {Math.round(tot / 60)} min
