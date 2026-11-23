@@ -2308,14 +2308,11 @@ export default function App() {
             />
           </div>
         </footer>
-        <nav id="tabs">
+        <nav id="tabs" aria-label="Main navigation">
           <NavItem n="home" icon="⌂" label="Home" />
           <NavItem n="search" icon="⌕" label="Search" />
-          <NavItem n="bollywood" icon="♫" label="Bollywood" />
-          <NavItem n="pakistani" icon="♫" label="Pakistan" />
-          <NavItem n="disc" icon="✦" label="Discover" />
-          <NavItem n="sp" icon="♫" label="Spotify" />
           <NavItem n="lib" icon="☰" label="Library" />
+          <NavItem n="hist" icon="◷" label="History" />
         </nav>
       </div>
       {queueOpen && (
