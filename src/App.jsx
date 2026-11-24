@@ -1883,15 +1883,25 @@ export default function App() {
             </div>
           </section>
         )}
-        {personalRecommendations.dailyMixIds.length > 0 && (
-          <section className="personal-section daily-mix-section" aria-label="Daily Mix">
+        <section className="personal-section daily-mix-section" aria-label="Daily Mix">
             <div className="hhead shelf-heading">
-              <h2>Daily Mix</h2>
-              <span className="artist-note personal-note">
-                A daily blend of familiar songs and new matches
-              </span>
+              <div>
+                <h2>Daily Mix</h2>
+                <span className="artist-note personal-note">
+                  A daily blend of familiar songs and new matches
+                </span>
+              </div>
+              {personalRecommendations.dailyMixIds.length > 0 && (
+                <button
+                  type="button"
+                  className="daily-mix-play"
+                  onClick={() => play(personalRecommendations.dailyMixIds, personalRecommendations.dailyMixIds[0])}
+                >
+                  ▶ <span>Play mix</span>
+                </button>
+              )}
             </div>
-            <div className="shelf-wrap">
+            {personalRecommendations.dailyMixIds.length > 0 ? <div className="shelf-wrap">
               <button
                 type="button"
                 className="shelf-arrow shelf-arrow-left"
@@ -1913,9 +1923,10 @@ export default function App() {
               >
                 ›
               </button>
-            </div>
+            </div> : (
+              <p className="daily-mix-empty">Play or like a few songs and your mix will take shape around your listening.</p>
+            )}
           </section>
-        )}
         {artistPicks.length > 0 && (
           <section className="artist-section">
             <div className="hhead">
