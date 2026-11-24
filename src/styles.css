@@ -1138,8 +1138,9 @@ span.chip {
 .lhead {
   gap: 8px;
 }
-.lhead span {
+.lhead > .lt {
   flex: 1;
+  min-width: 0;
 }
 .colb {
   font-size: 20px;
@@ -1292,6 +1293,21 @@ span.chip {
   color: var(--muted);
   flex: 1;
   text-align: left;
+}
+.lt .t {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lhead > .pill.sm {
+  flex: 0 1 auto;
+  padding-inline: 8px;
+  font-size: 11px;
+  white-space: nowrap;
+}
+.lhead > .xb {
+  flex: 0 0 28px;
 }
 .lt:hover {
   color: var(--fg);
