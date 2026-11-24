@@ -9,6 +9,8 @@ const bg = (t) =>
   t.img
     ? { background: `url(${t.img}) center/cover` }
     : { background: art(t).replace("background:", "") };
+const cleanEmoji = (value) =>
+  String(value || "").replace(/[\p{Extended_Pictographic}\u{1F1E6}-\u{1F1FF}\uFE0F\u20E3\u200D]/gu, "").replace(/\s{2,}/g, " ").trim();
 GL.jamendo = "Jamendo";
 GL.audius = "Audius";
 GL.saavn = "JioSaavn";
@@ -53,8 +55,8 @@ const jamSearch = async (p) => {
       const id = "j" + x.id;
       T[id] = T[id] || {
         id,
-        title: x.name,
-        artist: x.artist_name,
+        title: cleanEmoji(x.name),
+        artist: cleanEmoji(x.artist_name),
         g: "jamendo",
         url: x.audio || x.audiodownload,
         dur: +x.duration || 0,
@@ -84,8 +86,8 @@ const audGet = async (path, p = {}) => {
       const id = "a" + x.id;
       T[id] = T[id] || {
         id,
-        title: x.title,
-        artist: (x.user && x.user.name) || "Unknown",
+        title: cleanEmoji(x.title),
+        artist: cleanEmoji((x.user && x.user.name) || "Unknown"),
         g: "audius",
         url: AUD + "/tracks/" + x.id + "/stream?app_name=Wavelength",
         dur: +x.duration || 0,
@@ -117,14 +119,14 @@ const mapSaavnSong = (x) => {
   )[0]?.url;
   const bestImage = saavnImage(x.image);
   const artist =
-    x.artists?.primary?.map((a) => a.name).filter(Boolean).join(", ") ||
-    x.artists?.all?.map((a) => a.name).filter(Boolean).join(", ") ||
-    x.album?.name ||
+    x.artists?.primary?.map((a) => cleanEmoji(a.name)).filter(Boolean).join(", ") ||
+    x.artists?.all?.map((a) => cleanEmoji(a.name)).filter(Boolean).join(", ") ||
+    cleanEmoji(x.album?.name) ||
     "Unknown artist";
   T[id] = {
     ...(T[id] || {}),
     id,
-    title: x.name || x.title || "Unknown title",
+    title: cleanEmoji(x.name || x.title || "Unknown title"),
     artist,
     g: "saavn",
     url: bestAudio || T[id]?.url || "",
@@ -132,7 +134,7 @@ const mapSaavnSong = (x) => {
     img: bestImage || T[id]?.img || "",
     artistImg: bestImage || T[id]?.artistImg || "",
     hue: [...String(x.id)].reduce((a, c) => a + c.charCodeAt(0), 0) % 360,
-    album: x.album?.name || x.album || T[id]?.album || "",
+    album: cleanEmoji(x.album?.name || x.album || T[id]?.album || ""),
     sourceUrl: x.url || T[id]?.sourceUrl || "",
   };
   return id;
@@ -481,6 +483,15 @@ const resumeSnapshot = (track, queue, position, duration) => ({
   duration: Math.max(0, Number(duration) || 0),
   updatedAt: Date.now(),
 });
+
+function EqualizerIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
+      <path d="M5 4v16M12 4v16M19 4v16" />
+      <path d="M3 8h4M10 15h4M17 10h4" />
+    </svg>
+  );
+}
 
 function Auth({ onGuest }) {
   const [em, setEm] = useState(""),
@@ -1803,8 +1814,16 @@ export default function App() {
       {user.displayName || (user.email || "").split("@")[0] || "account"}
     </button>
   ) : (
-    <button className="addm" onClick={() => fb.configured && setGuest(false)}>
-      {fb.configured ? "Log in / sign up" : "Guest mode"}
+    <button
+      className="addm"
+      onClick={() => {
+        E.stopAll();
+        setCur(null);
+        setPlaying(false);
+        setGuest(false);
+      }}
+    >
+      Log out
     </button>
   );
   const h = new Date().getHours(),
@@ -2779,7 +2798,7 @@ export default function App() {
               title="Equalizer"
               onClick={toggleFx}
             >
-              🎚
+              <EqualizerIcon />
             </button>
             <button
               className={"ic" + (v.n === "hist" ? " on" : "")}
@@ -2802,28 +2821,29 @@ export default function App() {
                 <path d="M12 7v5l3 2" />
               </svg>
             </button>
-            {user && (
+            {(user || guest) && (
               <div className="sw">
                 <button className="av" onClick={() => setAcctOpen((o) => !o)} aria-label="Open profile menu">
-                  {profilePhoto ? <img src={profilePhoto} alt="" /> : (uname || "?")[0].toUpperCase()}
+                  {user && profilePhoto ? <img src={profilePhoto} alt="" /> : (user ? (uname || "?")[0].toUpperCase() : "G")}
                 </button>
                 {acctOpen && (
                   <div className="smenu">
                     <div className="profile-menu-head">
                       <div className="profile-menu-photo">
-                        {profilePhoto ? <img src={profilePhoto} alt="" /> : (uname || "?")[0].toUpperCase()}
+                        {user && profilePhoto ? <img src={profilePhoto} alt="" /> : (user ? (uname || "?")[0].toUpperCase() : "G")}
                       </div>
-                      <div className="sml">{uname}</div>
+                      <div className="sml">{user ? uname : "Guest session"}</div>
                     </div>
-                    <button onClick={() => profileInput.current?.click()}>Change profile photo</button>
-                    {d.profilePhoto && <button onClick={() => setD((state) => ({ ...state, profilePhoto: "" }))}>Remove custom photo</button>}
+                    {user && <button onClick={() => profileInput.current?.click()}>Change profile photo</button>}
+                    {user && d.profilePhoto && <button onClick={() => setD((state) => ({ ...state, profilePhoto: "" }))}>Remove custom photo</button>}
                     <button
                       onClick={() => {
                         setAcctOpen(false);
                         E.stopAll();
                         setCur(null);
                         setPlaying(false);
-                        fb.logout();
+                        if (user) fb.logout();
+                        else setGuest(false);
                       }}
                     >
                       Log out
@@ -3021,7 +3041,7 @@ export default function App() {
                 className={"ib eqb" + (v.n === "fx" ? " on" : "")}
                 onClick={toggleFx}
               >
-                🎚
+              <EqualizerIcon />
               </button>
               <button
                 className={"ib rpb" + (rep !== "off" ? " on" : "")}

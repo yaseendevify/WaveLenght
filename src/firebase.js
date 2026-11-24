@@ -1,7 +1,12 @@
 const env = import.meta.env;
+const hostingDomain = typeof window !== "undefined"
+  && env.VITE_FIREBASE_PROJECT_ID
+  && window.location.hostname === `${env.VITE_FIREBASE_PROJECT_ID}.web.app`
+  ? window.location.hostname
+  : env.VITE_FIREBASE_AUTH_DOMAIN;
 const config = {
   apiKey: env.VITE_FIREBASE_API_KEY,
-  authDomain: env.VITE_FIREBASE_AUTH_DOMAIN,
+  authDomain: hostingDomain,
   projectId: env.VITE_FIREBASE_PROJECT_ID,
   appId: env.VITE_FIREBASE_APP_ID,
 };

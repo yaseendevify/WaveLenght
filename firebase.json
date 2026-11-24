@@ -1,5 +1,6 @@
 {
   "hosting": {
+    "site": "wavelength-d6a7c",
     "public": "dist",
     "ignore": [
       "firebase.json",
