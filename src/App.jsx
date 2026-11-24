@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { GL, T, art } from "./data.js";
 import * as E from "./engine.js";
 import { putFile, getFile, delFile, allFiles } from "./store.js";
@@ -328,6 +328,76 @@ const SORTS = {
   recents: "Recents",
   added: "Recently Added",
   alpha: "Alphabetical",
+};
+const buildPersonalRecommendations = ({ history = [], likedIds = [], followedArtists = [] }) => {
+  const artistWeights = new Map();
+  const genreWeights = new Map();
+  const artistTokens = (value) => String(value || "")
+    .split(/,|\bfeat(?:uring)?\.?\s+/i)
+    .map((name) => name.trim().toLowerCase())
+    .filter((name) => name && !["unknown", "unknown artist", "various artists"].includes(name));
+  const addSignal = (track, weight) => {
+    const genre = (track?.g || "").trim().toLowerCase();
+    artistTokens(track?.artist).forEach((artist) => {
+      artistWeights.set(artist, (artistWeights.get(artist) || 0) + weight);
+    });
+    if (genre && !["audius", "saavn", "gaana", "jamendo", "local"].includes(genre))
+      genreWeights.set(genre, (genreWeights.get(genre) || 0) + weight);
+  };
+  history.forEach((entry, index) => {
+    addSignal(T[entry.id] || entry, Math.max(1, 5 - index * 0.08));
+  });
+  const liked = new Set(likedIds);
+  liked.forEach((id) => addSignal(T[id], 5));
+  followedArtists.forEach((artist) => {
+    artistTokens(artist.name).forEach((name) => {
+      artistWeights.set(name, (artistWeights.get(name) || 0) + 7);
+    });
+  });
+  const topArtist = [...artistWeights].sort((a, b) => b[1] - a[1])[0];
+  const topGenre = [...genreWeights].sort((a, b) => b[1] - a[1])[0];
+  const played = new Set(history.map((entry) => entry.id));
+  const today = new Date().toLocaleDateString("en-CA");
+  const dailyRank = (id) => {
+    let hash = 2166136261;
+    for (const char of `${today}:${id}`) {
+      hash ^= char.charCodeAt(0);
+      hash = Math.imul(hash, 16777619);
+    }
+    return hash >>> 0;
+  };
+  const catalogIds = Object.keys(T).filter((id) => T[id]?.url || T[id]?.file);
+  const rankedCandidates = catalogIds
+    .filter((id) => !liked.has(id) && !played.has(id))
+    .map((id) => {
+      const track = T[id];
+      const genre = (track.g || "").trim().toLowerCase();
+      return {
+        id,
+        score: artistTokens(track.artist).reduce((sum, artist) => sum + (artistWeights.get(artist) || 0), 0)
+          + (genreWeights.get(genre) || 0) * 0.65,
+      };
+    })
+    .filter((item) => item.score > 0)
+    .sort((a, b) => b.score - a.score || dailyRank(a.id) - dailyRank(b.id));
+  const familiarIds = [...new Set([
+    ...history.map((entry) => entry.id),
+    ...liked,
+  ])].filter((id) => T[id]?.url || T[id]?.file);
+  const freshIds = rankedCandidates.slice(0, 14).map((item) => item.id);
+  const dailyMixIds = [];
+  while (dailyMixIds.length < 20 && (familiarIds.length || freshIds.length)) {
+    const next = dailyMixIds.length % 3 === 2
+      ? freshIds.shift() || familiarIds.shift()
+      : familiarIds.shift() || freshIds.shift();
+    if (next && !dailyMixIds.includes(next)) dailyMixIds.push(next);
+  }
+  dailyMixIds.sort((a, b) => dailyRank(a) - dailyRank(b));
+  return {
+    ids: rankedCandidates.slice(0, 10).map((item) => item.id),
+    dailyMixIds,
+    reason: topArtist?.[1] >= (topGenre?.[1] || 0) ? topArtist?.[0] : topGenre?.[0],
+  };
 };
 const fmt = (s) => {
   s = Math.max(0, Math.floor(s || 0));
@@ -684,6 +754,25 @@ export default function App() {
     [br, setBr] = useState({ ids: [], busy: false, err: "" }),
     [pq, setPq] = useState(""),
     [pr, setPr] = useState({ ids: [], busy: false, err: "" });
+  const personalRecommendations = useMemo(
+    () => buildPersonalRecommendations({
+      history: d.hist,
+      likedIds: d.liked,
+      followedArtists,
+    }),
+    [d.hist, d.liked, d.followedArtists, d.jam, d.playlists, local, hm.shelves, sr, dc.shelves, detail.songs, br.ids, pr.ids],
+  );
+  const artistPicks = useMemo(() => {
+    const seen = new Set();
+    return hm.shelves.flatMap((shelf) => shelf.ids).filter((id) => {
+      const track = T[id];
+      const artist = (track?.artist || "").trim();
+      const key = artist.toLowerCase();
+      if (!artist || key === "unknown" || key === "unknown artist" || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    }).slice(0, 18).map((id) => ({ id, artist: T[id].artist }));
+  }, [hm.shelves]);
   const tl = (m) => {
     setMsg(m);
     clearTimeout(tm.current);
@@ -750,7 +839,7 @@ export default function App() {
     }
     try {
       if (item.isPublic) {
-        item.shareId = item.shareId || fb.newSharedPlaylistId();
+        item.shareId = item.shareId || await fb.newSharedPlaylistId();
         await fb.saveSharedPlaylist(item.shareId, sharedPlaylistData(item, user.uid));
       } else if (previous?.isPublic && previous.shareId) {
         await fb.deleteSharedPlaylist(previous.shareId);
@@ -1202,7 +1291,7 @@ export default function App() {
         endedHandled.current = true;
         r.next(true);
       }
-    }, 250);
+    }, 500);
     return () => clearInterval(h);
   }, []);
   useEffect(() => {
@@ -1724,94 +1813,6 @@ export default function App() {
     if (!shelf) return;
     shelf.scrollBy({ left: direction * shelf.clientWidth * 0.8, behavior: "smooth" });
   };
-  const personalRecommendations = (() => {
-    const artistWeights = new Map();
-    const genreWeights = new Map();
-    const artistTokens = (value) => String(value || "")
-      .split(/,|\bfeat(?:uring)?\.?\s+/i)
-      .map((name) => name.trim().toLowerCase())
-      .filter((name) => name && !["unknown", "unknown artist", "various artists"].includes(name));
-    const addSignal = (track, weight) => {
-      const genre = (track?.g || "").trim().toLowerCase();
-      artistTokens(track?.artist).forEach((artist) => {
-        artistWeights.set(artist, (artistWeights.get(artist) || 0) + weight);
-      });
-      // Provider names (Audius, JioSaavn, etc.) are sources, not useful genres.
-      if (genre && !["audius", "saavn", "gaana", "jamendo", "local"].includes(genre))
-        genreWeights.set(genre, (genreWeights.get(genre) || 0) + weight);
-    };
-    (d.hist || []).forEach((entry, index) => {
-      addSignal(T[entry.id] || entry, Math.max(1, 5 - index * 0.08));
-    });
-    [...liked].forEach((id) => addSignal(T[id], 5));
-    followedArtists.forEach((artist) => {
-      artistTokens(artist.name).forEach((name) => {
-        artistWeights.set(name, (artistWeights.get(name) || 0) + 7);
-      });
-    });
-    const topArtist = [...artistWeights].sort((a, b) => b[1] - a[1])[0];
-    const topGenre = [...genreWeights].sort((a, b) => b[1] - a[1])[0];
-    const played = new Set((d.hist || []).map((entry) => entry.id));
-    const today = new Date().toLocaleDateString("en-CA");
-    const dailyRank = (id) => {
-      let hash = 2166136261;
-      for (const char of `${today}:${id}`) {
-        hash ^= char.charCodeAt(0);
-        hash = Math.imul(hash, 16777619);
-      }
-      return hash >>> 0;
-    };
-    // Home and search discovery tracks live in T too, even though allIds()
-    // intentionally omits unliked streaming tracks from the user's library.
-    const catalogIds = new Set([
-      ...allIds(),
-      ...Object.keys(T).filter((id) => T[id].url || T[id].file),
-    ].filter((id) => T[id]?.url || T[id]?.file));
-    const rankedCandidates = [...catalogIds]
-      .filter((id) => !liked.has(id) && !played.has(id))
-      .map((id) => {
-        const track = T[id];
-        const genre = (track.g || "").trim().toLowerCase();
-        return {
-          id,
-          score: artistTokens(track.artist).reduce((sum, artist) => sum + (artistWeights.get(artist) || 0), 0)
-            + (genreWeights.get(genre) || 0) * 0.65,
-        };
-      })
-      .filter((item) => item.score > 0)
-      .sort((a, b) => b.score - a.score || dailyRank(a.id) - dailyRank(b.id));
-    const candidates = rankedCandidates
-      .slice(0, 10)
-      .map((item) => item.id);
-    const familiarIds = [...new Set([
-      ...(d.hist || []).map((entry) => entry.id),
-      ...liked,
-    ])].filter((id) => catalogIds.has(id) && (T[id]?.url || T[id]?.file));
-    const freshIds = rankedCandidates.slice(0, 14).map((item) => item.id);
-    const dailyMixIds = [];
-    while (dailyMixIds.length < 20 && (familiarIds.length || freshIds.length)) {
-      const next = dailyMixIds.length % 3 === 2
-        ? freshIds.shift() || familiarIds.shift()
-        : familiarIds.shift() || freshIds.shift();
-      if (next && !dailyMixIds.includes(next)) dailyMixIds.push(next);
-    }
-    dailyMixIds.sort((a, b) => dailyRank(a) - dailyRank(b));
-    const reason = topArtist?.[1] >= (topGenre?.[1] || 0)
-      ? topArtist?.[0]
-      : topGenre?.[0];
-    return { ids: candidates, dailyMixIds, reason };
-  })();
-  const artistPicks = (() => {
-    const seen = new Set();
-    return hm.shelves.flatMap((shelf) => shelf.ids).filter((id) => {
-      const track = T[id];
-      const artist = (track?.artist || "").trim();
-      const key = artist.toLowerCase();
-      if (!artist || key === "unknown" || key === "unknown artist" || seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    }).slice(0, 18).map((id) => ({ id, artist: T[id].artist }));
-  })();
   const ls = d.ls || "recents",
     lv = d.lv || "list",
     rpl = d.rp || [],

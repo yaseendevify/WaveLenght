@@ -444,6 +444,7 @@ h2:first-child {
   height: 2px;
   background: var(--acc);
   width: 0;
+  transition: width 480ms linear;
 }
 .info {
   display: flex;
@@ -529,6 +530,7 @@ input[type="range"] {
   outline: 0;
   cursor: pointer;
   margin: 0;
+  transition: background 240ms linear;
 }
 input[type="range"]::-webkit-slider-thumb {
   -webkit-appearance: none;
