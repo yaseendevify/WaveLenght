@@ -1742,13 +1742,22 @@ export default function App() {
     const topArtist = [...artistWeights].sort((a, b) => b[1] - a[1])[0];
     const topGenre = [...genreWeights].sort((a, b) => b[1] - a[1])[0];
     const played = new Set((d.hist || []).map((entry) => entry.id));
+    const today = new Date().toLocaleDateString("en-CA");
+    const dailyRank = (id) => {
+      let hash = 2166136261;
+      for (const char of `${today}:${id}`) {
+        hash ^= char.charCodeAt(0);
+        hash = Math.imul(hash, 16777619);
+      }
+      return hash >>> 0;
+    };
     // Home and search discovery tracks live in T too, even though allIds()
     // intentionally omits unliked streaming tracks from the user's library.
     const catalogIds = new Set([
       ...allIds(),
       ...Object.keys(T).filter((id) => T[id].url || T[id].file),
-    ]);
-    const candidates = [...catalogIds]
+    ].filter((id) => T[id]?.url || T[id]?.file));
+    const rankedCandidates = [...catalogIds]
       .filter((id) => !liked.has(id) && !played.has(id))
       .map((id) => {
         const track = T[id];
@@ -1760,13 +1769,27 @@ export default function App() {
         };
       })
       .filter((item) => item.score > 0)
-      .sort((a, b) => b.score - a.score || a.id.localeCompare(b.id))
+      .sort((a, b) => b.score - a.score || dailyRank(a.id) - dailyRank(b.id));
+    const candidates = rankedCandidates
       .slice(0, 10)
       .map((item) => item.id);
+    const familiarIds = [...new Set([
+      ...(d.hist || []).map((entry) => entry.id),
+      ...liked,
+    ])].filter((id) => catalogIds.has(id) && (T[id]?.url || T[id]?.file));
+    const freshIds = rankedCandidates.slice(0, 14).map((item) => item.id);
+    const dailyMixIds = [];
+    while (dailyMixIds.length < 20 && (familiarIds.length || freshIds.length)) {
+      const next = dailyMixIds.length % 3 === 2
+        ? freshIds.shift() || familiarIds.shift()
+        : familiarIds.shift() || freshIds.shift();
+      if (next && !dailyMixIds.includes(next)) dailyMixIds.push(next);
+    }
+    dailyMixIds.sort((a, b) => dailyRank(a) - dailyRank(b));
     const reason = topArtist?.[1] >= (topGenre?.[1] || 0)
       ? topArtist?.[0]
       : topGenre?.[0];
-    return { ids: candidates, reason };
+    return { ids: candidates, dailyMixIds, reason };
   })();
   const artistPicks = (() => {
     const seen = new Set();
@@ -1842,6 +1865,39 @@ export default function App() {
                 type="button"
                 className="shelf-arrow shelf-arrow-right"
                 aria-label="Scroll recommendations right"
+                title="Scroll right"
+                onClick={(event) => scrollShelf(event, 1)}
+              >
+                ›
+              </button>
+            </div>
+          </section>
+        )}
+        {personalRecommendations.dailyMixIds.length > 0 && (
+          <section className="personal-section daily-mix-section" aria-label="Daily Mix">
+            <div className="hhead shelf-heading">
+              <h2>Daily Mix</h2>
+              <span className="artist-note personal-note">
+                A daily blend of familiar songs and new matches
+              </span>
+            </div>
+            <div className="shelf-wrap">
+              <button
+                type="button"
+                className="shelf-arrow shelf-arrow-left"
+                aria-label="Scroll Daily Mix left"
+                title="Scroll left"
+                onClick={(event) => scrollShelf(event, -1)}
+              >
+                ‹
+              </button>
+              <div className="shelf">
+                {personalRecommendations.dailyMixIds.map((id) => tc(id, personalRecommendations.dailyMixIds))}
+              </div>
+              <button
+                type="button"
+                className="shelf-arrow shelf-arrow-right"
+                aria-label="Scroll Daily Mix right"
                 title="Scroll right"
                 onClick={(event) => scrollShelf(event, 1)}
               >
