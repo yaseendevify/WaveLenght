@@ -2591,18 +2591,19 @@ span.chip {
 /* Spotify-style top bar and four-item mobile navigation */
 @media (min-width: 821px) {
   #top {
-    grid-template-columns: 48px minmax(320px, 680px) minmax(120px, 1fr);
+    grid-template-columns: minmax(0, 1fr) minmax(320px, min(960px, 62vw)) minmax(0, 1fr);
     gap: 20px;
     padding: 0 18px;
   }
   #top .tc {
     justify-self: center;
     width: 100%;
-    max-width: 680px;
+    max-width: 960px;
   }
   #top .tr {
     gap: 8px;
     align-items: center;
+    justify-self: end;
   }
   #top .tr .tl {
     display: none;
