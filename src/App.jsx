@@ -450,6 +450,7 @@ const KEYS = [
   "savedAlbums",
   "followedArtists",
   "resume",
+  "profilePhoto",
 ];
 const RESUME_KEY = "wlResume";
 const readLocal = () => {
@@ -721,7 +722,8 @@ export default function App() {
     endedHandled = useRef(false),
     resumeAttempted = useRef(false),
     resumeLocalSavedAt = useRef(0),
-    resumeCloudSavedAt = useRef(0);
+    resumeCloudSavedAt = useRef(0),
+    profileInput = useRef();
   const liked = new Set(d.liked || []),
     rep = d.rep || "off",
     shuf = !!d.shuf,
@@ -730,6 +732,7 @@ export default function App() {
     playlists = d.playlists || [],
     savedAlbums = d.savedAlbums || [],
     followedArtists = d.followedArtists || [];
+  const profilePhoto = d.profilePhoto || user?.photoURL || "";
   (d.jam || []).forEach((j) => {
     if (!T[j.id])
       T[j.id] = {
@@ -805,6 +808,41 @@ export default function App() {
     setMsg(m);
     clearTimeout(tm.current);
     tm.current = setTimeout(() => setMsg(""), 1800);
+  };
+  const saveProfilePhoto = async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      tl("Choose an image file");
+      return;
+    }
+    try {
+      const dataUrl = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onerror = () => reject(new Error("Could not read that image"));
+        reader.onload = () => {
+          const image = new Image();
+          image.onerror = () => reject(new Error("Could not open that image"));
+          image.onload = () => {
+            const canvas = document.createElement("canvas");
+            const side = Math.min(image.naturalWidth, image.naturalHeight);
+            const x = (image.naturalWidth - side) / 2;
+            const y = (image.naturalHeight - side) / 2;
+            canvas.width = 256;
+            canvas.height = 256;
+            canvas.getContext("2d").drawImage(image, x, y, side, side, 0, 0, 256, 256);
+            resolve(canvas.toDataURL("image/jpeg", 0.78));
+          };
+          image.src = reader.result;
+        };
+        reader.readAsDataURL(file);
+      });
+      setD((state) => ({ ...state, profilePhoto: dataUrl }));
+      tl("Profile photo updated");
+    } catch {
+      tl("Could not use that image");
+    }
   };
   const nav = (n, id) => {
     setV({ n, id });
@@ -2766,12 +2804,19 @@ export default function App() {
             </button>
             {user && (
               <div className="sw">
-                <button className="av" onClick={() => setAcctOpen((o) => !o)}>
-                  {(uname || "?")[0].toUpperCase()}
+                <button className="av" onClick={() => setAcctOpen((o) => !o)} aria-label="Open profile menu">
+                  {profilePhoto ? <img src={profilePhoto} alt="" /> : (uname || "?")[0].toUpperCase()}
                 </button>
                 {acctOpen && (
                   <div className="smenu">
-                    <div className="sml">{uname}</div>
+                    <div className="profile-menu-head">
+                      <div className="profile-menu-photo">
+                        {profilePhoto ? <img src={profilePhoto} alt="" /> : (uname || "?")[0].toUpperCase()}
+                      </div>
+                      <div className="sml">{uname}</div>
+                    </div>
+                    <button onClick={() => profileInput.current?.click()}>Change profile photo</button>
+                    {d.profilePhoto && <button onClick={() => setD((state) => ({ ...state, profilePhoto: "" }))}>Remove custom photo</button>}
                     <button
                       onClick={() => {
                         setAcctOpen(false);
@@ -2783,6 +2828,7 @@ export default function App() {
                     >
                       Log out
                     </button>
+                    <input ref={profileInput} type="file" accept="image/*" onChange={saveProfilePhoto} hidden />
                   </div>
                 )}
               </div>

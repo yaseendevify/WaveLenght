@@ -972,6 +972,33 @@ input[type="range"]::-moz-range-thumb {
   color: #000;
   font-weight: 800;
   font-size: 16px;
+  overflow: hidden;
+  padding: 0;
+}
+.av img,
+.profile-menu-photo img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+}
+.profile-menu-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+}
+.profile-menu-photo {
+  width: 42px;
+  height: 42px;
+  flex: 0 0 42px;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 50%;
+  background: var(--acc);
+  color: #000;
+  font-weight: 800;
 }
 #top .tr > .sw {
   position: relative;
