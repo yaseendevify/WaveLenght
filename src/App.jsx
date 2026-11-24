@@ -3,6 +3,7 @@ import { GL, T, art } from "./data.js";
 import * as E from "./engine.js";
 import { putFile, getFile, delFile, allFiles } from "./store.js";
 import * as fb from "./firebase.js";
+import LyricsPanel from "./LyricsPanel.jsx";
 
 const bg = (t) =>
   t.img
@@ -3062,6 +3063,7 @@ export default function App() {
                 {rep === "one" ? "↻1" : "↻"}
               </button>
             </div>
+            <LyricsPanel track={cur} position={pos} />
             <h2 className="sh2">Sound</h2>
             {fxPanel()}
           </div>

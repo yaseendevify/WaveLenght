@@ -2974,6 +2974,58 @@ span.chip {
 .shared-track-copy small { margin-top: 5px; color: var(--muted); font-size: 11px; }
 .shared-playlist-tracks time { min-width: 38px; color: var(--muted); text-align: right; font-size: 11px; }
 .shared-playlist-empty { grid-template-columns: 1fr !important; color: var(--muted); }
+
+.lyrics-feature {
+  margin: 22px 0 0;
+  border: 1px solid var(--line, #303037);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.035);
+  overflow: hidden;
+}
+.lyrics-toggle {
+  display: flex;
+  width: 100%;
+  min-height: 48px;
+  align-items: center;
+  gap: 10px;
+  padding: 0 14px;
+  color: var(--fg, #f7f7fa);
+  background: transparent;
+  text-align: left;
+  font-weight: 750;
+}
+.lyrics-toggle > span:first-child { color: #1ed760; font-size: 20px; }
+.lyrics-toggle-state { margin-left: auto; color: var(--muted, #a5a5b0); font-size: 18px; }
+.lyrics-toggle:hover, .lyrics-toggle.on { background: rgba(255, 255, 255, 0.055); }
+.lyrics-panel { padding: 0 14px 14px; }
+.lyrics-message { margin: 8px 0; color: var(--muted, #a5a5b0); text-align: center; }
+.lyrics-lines {
+  max-height: 290px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  padding: 4px 2px;
+  mask-image: linear-gradient(transparent, #000 8%, #000 92%, transparent);
+}
+.lyrics-lines p {
+  margin: 12px 0;
+  color: var(--muted, #a5a5b0);
+  font-size: clamp(17px, 4vw, 22px);
+  font-weight: 750;
+  line-height: 1.45;
+  text-align: center;
+  transition: color 180ms ease, opacity 180ms ease, transform 180ms ease;
+  overflow-wrap: anywhere;
+}
+.lyrics-lines.synced p { opacity: 0.58; }
+.lyrics-lines.synced p.active { color: var(--fg, #fff); opacity: 1; transform: scale(1.025); }
+.lyrics-lines.plain p { margin: 8px 0; font-size: 16px; font-weight: 500; }
+.lyrics-lines small, .lyrics-credit { display: block; margin-top: 10px; color: var(--muted, #a5a5b0); font-size: 11px; text-align: center; }
+.lyrics-retry { color: var(--fg, #fff); background: transparent; text-decoration: underline; }
+@media (max-width: 600px) {
+  .lyrics-feature { margin-top: 16px; }
+  .lyrics-lines { max-height: 240px; }
+}
 @media (max-width: 520px) {
   .shared-playlist-page { padding: 18px 12px; }
   .shared-playlist-hero { align-items: center; gap: 14px; }
