@@ -971,7 +971,7 @@ input[type="range"]::-moz-range-thumb {
   font-weight: 800;
   font-size: 16px;
 }
-.sw {
+#top .tr > .sw {
   position: relative;
   z-index: 60;
 }
