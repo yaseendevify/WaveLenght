@@ -391,6 +391,15 @@ function Auth({ onGuest }) {
   const [em, setEm] = useState(""),
     [pw, setPw] = useState(""),
     [err, setErr] = useState("");
+  useEffect(() => {
+    fb.googleRedirectResult().catch((e) => {
+      setErr(
+        String(e.code || e.message)
+          .replace("auth/", "")
+          .replace(/-/g, " "),
+      );
+    });
+  }, []);
   const run = async (f) => {
     setErr("");
     try {
