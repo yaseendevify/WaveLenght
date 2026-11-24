@@ -2715,8 +2715,9 @@ export default function App() {
                 </span>
                 <span className="t">Your Library</span>
               </button>
-              <button className="pill sm" onClick={() => fi.current.click()}>
-                ＋ Add music
+              <button className="pill sm" onClick={() => fi.current.click()} title="Add music" aria-label="Add music">
+                <span aria-hidden="true">＋</span>
+                <span className="add-music-label">Add music</span>
               </button>
               <button
                 className="ib xb"

@@ -1282,32 +1282,49 @@ span.chip {
 }
 .lhead {
   padding: 2px 8px 12px;
-  gap: 8px;
+  gap: 4px;
 }
 .lt {
   display: flex;
   align-items: center;
   gap: 10px;
   font-weight: 700;
-  font-size: 16px;
+  font-size: 15px;
   color: var(--muted);
   flex: 1;
+  min-width: 0;
   text-align: left;
 }
 .lt .t {
+  flex: 1;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .lhead > .pill.sm {
-  flex: 0 1 auto;
-  padding-inline: 8px;
+  flex: 0 0 auto;
+  padding: 5px 7px;
   font-size: 11px;
   white-space: nowrap;
 }
+#app:not(.sw) .lhead > .pill.sm {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-radius: 50%;
+}
+#app:not(.sw) .lhead > .pill.sm .add-music-label {
+  display: none;
+}
+.sw .lhead > .pill.sm {
+  padding: 5px 12px;
+  font-size: 12px;
+}
 .lhead > .xb {
-  flex: 0 0 28px;
+  flex: 0 0 24px;
+  width: 24px;
+  padding: 0;
 }
 .lt:hover {
   color: var(--fg);
