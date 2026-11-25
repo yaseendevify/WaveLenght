@@ -87,8 +87,12 @@ const isMobileBrowser = () => typeof navigator !== "undefined" && (
 );
 
 export const google = async () => {
-  const { auth, GoogleAuthProvider, signInWithPopup, signInWithRedirect } = await getAuthServices();
+  const { auth, GoogleAuthProvider, signInWithCredential, signInWithPopup, signInWithRedirect } = await getAuthServices();
   const provider = new GoogleAuthProvider();
+  if (window.wavelengthDesktop?.googleSignIn) {
+    const { idToken } = await window.wavelengthDesktop.googleSignIn();
+    return signInWithCredential(auth, GoogleAuthProvider.credential(idToken));
+  }
   if (isMobileBrowser()) return signInWithRedirect(auth, provider);
   try {
     return await signInWithPopup(auth, provider);
@@ -100,8 +104,20 @@ export const google = async () => {
 
 export const googleRedirectResult = async () => {
   if (!configured) return null;
-  const { auth, getRedirectResult } = await getAuthServices();
-  return getRedirectResult(auth);
+  const { auth, GoogleAuthProvider, getRedirectResult, signInWithRedirect } = await getAuthServices();
+  const desktopState = new URLSearchParams(window.location.search).get("desktopAuth");
+  if (!desktopState) return getRedirectResult(auth);
+
+  const result = await getRedirectResult(auth);
+  if (!result) return signInWithRedirect(auth, new GoogleAuthProvider());
+
+  const credential = GoogleAuthProvider.credentialFromResult(result);
+  if (!credential?.idToken) throw new Error("Google did not return an ID token");
+  const callback = new URL("wavelength://auth/callback");
+  callback.searchParams.set("state", desktopState);
+  callback.searchParams.set("idToken", credential.idToken);
+  window.location.replace(callback.href);
+  return null;
 };
 
 export const logout = async () => {

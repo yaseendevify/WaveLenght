@@ -493,19 +493,13 @@ function EqualizerIcon() {
   );
 }
 
-function Auth({ onGuest }) {
+function Auth({ onGuest, initialError = "" }) {
   const [em, setEm] = useState(""),
     [pw, setPw] = useState(""),
-    [err, setErr] = useState("");
+    [err, setErr] = useState(initialError);
   useEffect(() => {
-    fb.googleRedirectResult().catch((e) => {
-      setErr(
-        String(e.code || e.message)
-          .replace("auth/", "")
-          .replace(/-/g, " "),
-      );
-    });
-  }, []);
+    if (initialError) setErr(initialError);
+  }, [initialError]);
   const run = async (f) => {
     setErr("");
     try {
@@ -723,6 +717,7 @@ export default function App() {
   const [pos, setPos] = useState(0),
     [dur, setDur] = useState(0),
     [msg, setMsg] = useState("");
+  const [authRedirectError, setAuthRedirectError] = useState("");
   const [needsResume, setNeedsResume] = useState(false);
   const R = useRef({}),
     fi = useRef(),
@@ -1305,6 +1300,13 @@ export default function App() {
   useEffect(() => {
     E.setVol(vol);
     const un = fb.onUser(setUser);
+    fb.googleRedirectResult().catch((e) => {
+      setAuthRedirectError(
+        String(e.code || e.message)
+          .replace("auth/", "")
+          .replace(/-/g, " "),
+      );
+    });
     allFiles().then((rs) => {
       if (Array.isArray(rs)) {
         rs.sort((a, b) => (a.id < b.id ? -1 : 1));
@@ -1756,7 +1758,7 @@ export default function App() {
 
   if (sharedId) return <SharedPlaylistView state={sharedView} />;
   if (user === undefined) return null;
-  if (!user && !guest) return <Auth onGuest={() => setGuest(true)} />;
+  if (!user && !guest) return <Auth initialError={authRedirectError} onGuest={() => setGuest(true)} />;
 
   /* views */
   const rows = (ids, key) =>

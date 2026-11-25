@@ -1,4 +1,58 @@
-{"name":"wavelength","private":true,"version":"1.0.0","type":"module",
-"scripts":{"dev":"vite","build":"vite build","preview":"vite preview"},
-"dependencies":{"firebase":"^10.14.1","react":"^18.3.1","react-dom":"^18.3.1"},
-"devDependencies":{"@vitejs/plugin-basic-ssl":"^1.1.0","@vitejs/plugin-react":"^4.3.3","vite":"^5.4.10"}}
+{
+  "name": "wavelength",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "desktop:app": "electron .",
+    "desktop:dev": "WAVELENGTH_DEV_URL=http://localhost:5173 electron .",
+    "desktop:package": "bash scripts/package-mac-dmg.sh"
+  },
+  "dependencies": {
+    "firebase": "^10.14.1",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-basic-ssl": "^1.1.0",
+    "@vitejs/plugin-react": "^4.3.3",
+    "vite": "^5.4.10",
+    "electron": "^45.5.0",
+    "electron-builder": "^26.18.0"
+  },
+  "main": "electron/main.cjs",
+  "build": {
+    "appId": "com.wavelength.music",
+    "productName": "Wavelength",
+    "directories": {
+      "output": "dist/desktop"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "package.json"
+    ],
+    "protocols": [
+      {
+        "name": "Wavelength sign in",
+        "schemes": [
+          "wavelength"
+        ]
+      }
+    ],
+    "mac": {
+      "target": [
+        "dmg"
+      ],
+      "icon": "build/mac-icon.icns",
+      "category": "public.app-category.music"
+    },
+    "dmg": {
+      "artifactName": "Wavelength-${version}-mac-${arch}.${ext}"
+    }
+  },
+  "description": "Wavelength standalone music app"
+}
