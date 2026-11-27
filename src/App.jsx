@@ -1,18 +1,22 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { GL, T, art } from "./data.js";
 import * as E from "./engine.js";
 import { putFile, getFile, delFile, allFiles } from "./store.js";
 import * as fb from "./firebase.js";
+import LyricsPanel from "./LyricsPanel.jsx";
 
 const bg = (t) =>
   t.img
     ? { background: `url(${t.img}) center/cover` }
     : { background: art(t).replace("background:", "") };
+const cleanEmoji = (value) =>
+  String(value || "").replace(/[\p{Extended_Pictographic}\u{1F1E6}-\u{1F1FF}\uFE0F\u20E3\u200D]/gu, "").replace(/\s{2,}/g, " ").trim();
 GL.jamendo = "Jamendo";
 GL.audius = "Audius";
 GL.saavn = "JioSaavn";
 GL.gaana = "Gaana";
 const JKEY = import.meta.env.VITE_JAMENDO_CLIENT_ID;
+const ANDROID_RELEASE_URL = "https://raw.githubusercontent.com/yaseendevify/WaveLenght/a888ba6d65f73f8fa39642b951444af5d4b2880a/downloads/Wavelength-Native-Android.apk";
 const TAGS = [
   "lofi",
   "electronic",
@@ -52,8 +56,8 @@ const jamSearch = async (p) => {
       const id = "j" + x.id;
       T[id] = T[id] || {
         id,
-        title: x.name,
-        artist: x.artist_name,
+        title: cleanEmoji(x.name),
+        artist: cleanEmoji(x.artist_name),
         g: "jamendo",
         url: x.audio || x.audiodownload,
         dur: +x.duration || 0,
@@ -83,8 +87,8 @@ const audGet = async (path, p = {}) => {
       const id = "a" + x.id;
       T[id] = T[id] || {
         id,
-        title: x.title,
-        artist: (x.user && x.user.name) || "Unknown",
+        title: cleanEmoji(x.title),
+        artist: cleanEmoji((x.user && x.user.name) || "Unknown"),
         g: "audius",
         url: AUD + "/tracks/" + x.id + "/stream?app_name=Wavelength",
         dur: +x.duration || 0,
@@ -116,14 +120,14 @@ const mapSaavnSong = (x) => {
   )[0]?.url;
   const bestImage = saavnImage(x.image);
   const artist =
-    x.artists?.primary?.map((a) => a.name).filter(Boolean).join(", ") ||
-    x.artists?.all?.map((a) => a.name).filter(Boolean).join(", ") ||
-    x.album?.name ||
+    x.artists?.primary?.map((a) => cleanEmoji(a.name)).filter(Boolean).join(", ") ||
+    x.artists?.all?.map((a) => cleanEmoji(a.name)).filter(Boolean).join(", ") ||
+    cleanEmoji(x.album?.name) ||
     "Unknown artist";
   T[id] = {
     ...(T[id] || {}),
     id,
-    title: x.name || x.title || "Unknown title",
+    title: cleanEmoji(x.name || x.title || "Unknown title"),
     artist,
     g: "saavn",
     url: bestAudio || T[id]?.url || "",
@@ -131,7 +135,7 @@ const mapSaavnSong = (x) => {
     img: bestImage || T[id]?.img || "",
     artistImg: bestImage || T[id]?.artistImg || "",
     hue: [...String(x.id)].reduce((a, c) => a + c.charCodeAt(0), 0) % 360,
-    album: x.album?.name || x.album || T[id]?.album || "",
+    album: cleanEmoji(x.album?.name || x.album || T[id]?.album || ""),
     sourceUrl: x.url || T[id]?.sourceUrl || "",
   };
   return id;
@@ -328,6 +332,76 @@ const SORTS = {
   added: "Recently Added",
   alpha: "Alphabetical",
 };
+const buildPersonalRecommendations = ({ history = [], likedIds = [], followedArtists = [] }) => {
+  const artistWeights = new Map();
+  const genreWeights = new Map();
+  const artistTokens = (value) => String(value || "")
+    .split(/,|\bfeat(?:uring)?\.?\s+/i)
+    .map((name) => name.trim().toLowerCase())
+    .filter((name) => name && !["unknown", "unknown artist", "various artists"].includes(name));
+  const addSignal = (track, weight) => {
+    const genre = (track?.g || "").trim().toLowerCase();
+    artistTokens(track?.artist).forEach((artist) => {
+      artistWeights.set(artist, (artistWeights.get(artist) || 0) + weight);
+    });
+    if (genre && !["audius", "saavn", "gaana", "jamendo", "local"].includes(genre))
+      genreWeights.set(genre, (genreWeights.get(genre) || 0) + weight);
+  };
+  history.forEach((entry, index) => {
+    addSignal(T[entry.id] || entry, Math.max(1, 5 - index * 0.08));
+  });
+  const liked = new Set(likedIds);
+  liked.forEach((id) => addSignal(T[id], 5));
+  followedArtists.forEach((artist) => {
+    artistTokens(artist.name).forEach((name) => {
+      artistWeights.set(name, (artistWeights.get(name) || 0) + 7);
+    });
+  });
+  const topArtist = [...artistWeights].sort((a, b) => b[1] - a[1])[0];
+  const topGenre = [...genreWeights].sort((a, b) => b[1] - a[1])[0];
+  const played = new Set(history.map((entry) => entry.id));
+  const today = new Date().toLocaleDateString("en-CA");
+  const dailyRank = (id) => {
+    let hash = 2166136261;
+    for (const char of `${today}:${id}`) {
+      hash ^= char.charCodeAt(0);
+      hash = Math.imul(hash, 16777619);
+    }
+    return hash >>> 0;
+  };
+  const catalogIds = Object.keys(T).filter((id) => T[id]?.url || T[id]?.file);
+  const rankedCandidates = catalogIds
+    .filter((id) => !liked.has(id) && !played.has(id))
+    .map((id) => {
+      const track = T[id];
+      const genre = (track.g || "").trim().toLowerCase();
+      return {
+        id,
+        score: artistTokens(track.artist).reduce((sum, artist) => sum + (artistWeights.get(artist) || 0), 0)
+          + (genreWeights.get(genre) || 0) * 0.65,
+      };
+    })
+    .filter((item) => item.score > 0)
+    .sort((a, b) => b.score - a.score || dailyRank(a.id) - dailyRank(b.id));
+  const familiarIds = [...new Set([
+    ...history.map((entry) => entry.id),
+    ...liked,
+  ])].filter((id) => T[id]?.url || T[id]?.file);
+  const freshIds = rankedCandidates.slice(0, 14).map((item) => item.id);
+  const dailyMixIds = [];
+  while (dailyMixIds.length < 20 && (familiarIds.length || freshIds.length)) {
+    const next = dailyMixIds.length % 3 === 2
+      ? freshIds.shift() || familiarIds.shift()
+      : familiarIds.shift() || freshIds.shift();
+    if (next && !dailyMixIds.includes(next)) dailyMixIds.push(next);
+  }
+  dailyMixIds.sort((a, b) => dailyRank(a) - dailyRank(b));
+  return {
+    ids: rankedCandidates.slice(0, 10).map((item) => item.id),
+    dailyMixIds,
+    reason: topArtist?.[1] >= (topGenre?.[1] || 0) ? topArtist?.[0] : topGenre?.[0],
+  };
+};
 const fmt = (s) => {
   s = Math.max(0, Math.floor(s || 0));
   return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0");
@@ -378,7 +452,10 @@ const KEYS = [
   "playlists",
   "savedAlbums",
   "followedArtists",
+  "resume",
+  "profilePhoto",
 ];
+const RESUME_KEY = "wlResume";
 const readLocal = () => {
   try {
     return JSON.parse(localStorage.getItem("wl2") || "{}");
@@ -386,11 +463,44 @@ const readLocal = () => {
     return {};
   }
 };
+const readResume = () => {
+  try {
+    return JSON.parse(localStorage.getItem(RESUME_KEY) || "null");
+  } catch {
+    return null;
+  }
+};
+const resumeSnapshot = (track, queue, position, duration) => ({
+  track: track && Object.fromEntries(
+    ["id", "title", "artist", "album", "url", "img", "hue", "g", "dur", "file"]
+      .filter((key) => track[key] !== undefined)
+      .map((key) => [key, track[key]]),
+  ),
+  queue: {
+    ids: [...new Set(queue?.ids || [])].slice(0, 250),
+    i: Math.max(0, Number(queue?.i) || 0),
+  },
+  position: Math.max(0, Number(position) || 0),
+  duration: Math.max(0, Number(duration) || 0),
+  updatedAt: Date.now(),
+});
 
-function Auth({ onGuest }) {
+function EqualizerIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
+      <path d="M5 4v16M12 4v16M19 4v16" />
+      <path d="M3 8h4M10 15h4M17 10h4" />
+    </svg>
+  );
+}
+
+function Auth({ onGuest, initialError = "" }) {
   const [em, setEm] = useState(""),
     [pw, setPw] = useState(""),
-    [err, setErr] = useState("");
+    [err, setErr] = useState(initialError);
+  useEffect(() => {
+    if (initialError) setErr(initialError);
+  }, [initialError]);
   const run = async (f) => {
     setErr("");
     try {
@@ -588,7 +698,8 @@ export default function App() {
   const [sharedId] = useState(() => new URLSearchParams(window.location.search).get("sharedPlaylist") || "");
   const [sharedView, setSharedView] = useState({ status: "loading", playlist: null });
   const [d, setD] = useState(readLocal),
-    [local, setLocal] = useState([]);
+    [local, setLocal] = useState([]),
+    [localReady, setLocalReady] = useState(false);
   const [v, setV] = useState({ n: "home" }),
     [sq, setSq] = useState(""),
     [spIn, setSpIn] = useState(""),
@@ -607,13 +718,19 @@ export default function App() {
   const [pos, setPos] = useState(0),
     [dur, setDur] = useState(0),
     [msg, setMsg] = useState("");
+  const [authRedirectError, setAuthRedirectError] = useState("");
+  const [needsResume, setNeedsResume] = useState(false);
   const R = useRef({}),
     fi = useRef(),
     mainRef = useRef(),
     drag = useRef(false),
     tm = useRef(),
     sv = useRef(),
-    endedHandled = useRef(false);
+    endedHandled = useRef(false),
+    resumeAttempted = useRef(false),
+    resumeLocalSavedAt = useRef(0),
+    resumeCloudSavedAt = useRef(0),
+    profileInput = useRef();
   const liked = new Set(d.liked || []),
     rep = d.rep || "off",
     shuf = !!d.shuf,
@@ -622,6 +739,7 @@ export default function App() {
     playlists = d.playlists || [],
     savedAlbums = d.savedAlbums || [],
     followedArtists = d.followedArtists || [];
+  const profilePhoto = d.profilePhoto || user?.photoURL || "";
   (d.jam || []).forEach((j) => {
     if (!T[j.id])
       T[j.id] = {
@@ -674,10 +792,64 @@ export default function App() {
     [br, setBr] = useState({ ids: [], busy: false, err: "" }),
     [pq, setPq] = useState(""),
     [pr, setPr] = useState({ ids: [], busy: false, err: "" });
+  const personalRecommendations = useMemo(
+    () => buildPersonalRecommendations({
+      history: d.hist,
+      likedIds: d.liked,
+      followedArtists,
+    }),
+    [d.hist, d.liked, d.followedArtists, d.jam, d.playlists, local, hm.shelves, sr, dc.shelves, detail.songs, br.ids, pr.ids],
+  );
+  const artistPicks = useMemo(() => {
+    const seen = new Set();
+    return hm.shelves.flatMap((shelf) => shelf.ids).filter((id) => {
+      const track = T[id];
+      const artist = (track?.artist || "").trim();
+      const key = artist.toLowerCase();
+      if (!artist || key === "unknown" || key === "unknown artist" || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    }).slice(0, 18).map((id) => ({ id, artist: T[id].artist }));
+  }, [hm.shelves]);
   const tl = (m) => {
     setMsg(m);
     clearTimeout(tm.current);
     tm.current = setTimeout(() => setMsg(""), 1800);
+  };
+  const saveProfilePhoto = async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      tl("Choose an image file");
+      return;
+    }
+    try {
+      const dataUrl = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onerror = () => reject(new Error("Could not read that image"));
+        reader.onload = () => {
+          const image = new Image();
+          image.onerror = () => reject(new Error("Could not open that image"));
+          image.onload = () => {
+            const canvas = document.createElement("canvas");
+            const side = Math.min(image.naturalWidth, image.naturalHeight);
+            const x = (image.naturalWidth - side) / 2;
+            const y = (image.naturalHeight - side) / 2;
+            canvas.width = 256;
+            canvas.height = 256;
+            canvas.getContext("2d").drawImage(image, x, y, side, side, 0, 0, 256, 256);
+            resolve(canvas.toDataURL("image/jpeg", 0.78));
+          };
+          image.src = reader.result;
+        };
+        reader.readAsDataURL(file);
+      });
+      setD((state) => ({ ...state, profilePhoto: dataUrl }));
+      tl("Profile photo updated");
+    } catch {
+      tl("Could not use that image");
+    }
   };
   const nav = (n, id) => {
     setV({ n, id });
@@ -740,7 +912,7 @@ export default function App() {
     }
     try {
       if (item.isPublic) {
-        item.shareId = item.shareId || fb.newSharedPlaylistId();
+        item.shareId = item.shareId || await fb.newSharedPlaylistId();
         await fb.saveSharedPlaylist(item.shareId, sharedPlaylistData(item, user.uid));
       } else if (previous?.isPublic && previous.shareId) {
         await fb.deleteSharedPlaylist(previous.shareId);
@@ -879,7 +1051,7 @@ export default function App() {
   };
 
   /* player */
-  const go = async (id, nq, auto = true) => {
+  const go = async (id, nq, auto = true, startAt = 0) => {
     let t = T[id];
     if (t && t.g === "gaana" && !t.url) {
       try {
@@ -892,7 +1064,8 @@ export default function App() {
     setCur(t);
     setQ(nq);
     setPlaying(auto);
-    setPos(0);
+    setNeedsResume(false);
+    setPos(startAt);
     setD((x) => ({
       ...x,
       recents: [id, ...(x.recents || []).filter((r) => r !== id)].slice(0, 12),
@@ -926,13 +1099,12 @@ export default function App() {
       tl("Audio stream is not available for this song");
       return;
     }
-    const ok = await E.play(t, 0, getBlob);
+    const ok = auto ? await E.play(t, startAt, getBlob) : await E.cue(t, startAt, getBlob);
     if (ok) endedHandled.current = false;
     if (ok === false) {
       tl("Could not play this file");
       return;
     }
-    if (ok && !auto) E.pause();
   };
   const play = (ids, id) =>
     go(
@@ -944,8 +1116,13 @@ export default function App() {
   const seekTo = async (s) => {
     const c = R.current.cur;
     if (!c) return;
+    if (!R.current.playing) {
+      await E.cue(c, s, getBlob);
+      setPos(s);
+      setNeedsResume(true);
+      return;
+    }
     await E.play(c, s, getBlob);
-    if (!R.current.playing) E.pause();
   };
   const next = (auto) => {
     const { q, rep, cur } = R.current;
@@ -970,8 +1147,8 @@ export default function App() {
     const i = q.i > 0 ? q.i - 1 : rep === "all" ? q.ids.length - 1 : 0;
     go(q.ids[i], { ...q, i });
   };
-  const toggle = () => {
-    const { cur, playing } = R.current;
+  const toggle = async () => {
+    const { cur, playing, needsResume: shouldResume } = R.current;
     if (!cur) {
       const a = allIds();
       return play(a, a[0]);
@@ -979,6 +1156,18 @@ export default function App() {
     if (playing) {
       E.pause();
       setPlaying(false);
+    } else if (shouldResume) {
+      const startAt = E.pos();
+      setPlaying(true);
+      setNeedsResume(false);
+      const ok = await E.play(cur, startAt, getBlob);
+      if (ok === false) {
+        setPlaying(false);
+        setNeedsResume(true);
+        tl("Could not resume this song");
+      } else if (ok) {
+        endedHandled.current = false;
+      }
     } else if (E.ended()) {
       go(cur.id, q);
     } else {
@@ -1055,7 +1244,7 @@ export default function App() {
     go(id, { ...q, i: index });
     setQueueOpen(false);
   };
-  R.current = { q, rep, cur, playing, next, toggle, prev, like, toggleShuf };
+  R.current = { q, rep, cur, playing, needsResume, user, ready, next, toggle, prev, like, toggleShuf };
   const c = { cur, playing, liked, play, like, addQ, addToPlaylist };
 
   /* local files */
@@ -1112,23 +1301,32 @@ export default function App() {
   useEffect(() => {
     E.setVol(vol);
     const un = fb.onUser(setUser);
-    allFiles().then((rs) => {
-      if (!Array.isArray(rs)) return;
-      rs.sort((a, b) => (a.id < b.id ? -1 : 1));
-      rs.forEach((r) => {
-        blobs.set(r.id, r.blob);
-        T[r.id] = {
-          id: r.id,
-          title: r.title,
-          artist: "Your device",
-          g: "local",
-          file: true,
-          dur: r.dur,
-          hue: r.hue,
-        };
-      });
-      setLocal(rs.map((r) => r.id));
+    fb.googleRedirectResult().catch((e) => {
+      setAuthRedirectError(
+        String(e.code || e.message)
+          .replace("auth/", "")
+          .replace(/-/g, " "),
+      );
     });
+    allFiles().then((rs) => {
+      if (Array.isArray(rs)) {
+        rs.sort((a, b) => (a.id < b.id ? -1 : 1));
+        rs.forEach((r) => {
+          blobs.set(r.id, r.blob);
+          T[r.id] = {
+            id: r.id,
+            title: r.title,
+            artist: "Your device",
+            g: "local",
+            file: true,
+            dur: r.dur,
+            hue: r.hue,
+          };
+        });
+        setLocal(rs.map((r) => r.id));
+      }
+      setLocalReady(true);
+    }).catch(() => setLocalReady(true));
     return un;
   }, []);
   useEffect(() => {
@@ -1150,6 +1348,37 @@ export default function App() {
       .catch(() => tl("Could not load your account data"))
       .finally(() => setReady(true));
   }, [user]);
+  useEffect(() => {
+    if (resumeAttempted.current || sharedId || user === undefined || !localReady) return;
+    if (user ? !ready : !guest) return;
+    resumeAttempted.current = true;
+    const localResume = readResume();
+    const saved = (localResume?.updatedAt || 0) >= (d.resume?.updatedAt || 0)
+      ? localResume
+      : d.resume;
+    if (!saved?.track?.id) return;
+    const catalogTrack = T[saved.track.id];
+    const track = catalogTrack ? { ...catalogTrack, ...saved.track } : saved.track;
+    if ((!track.url && !track.file) || (track.file && !blobs.has(track.id))) {
+      try { localStorage.removeItem(RESUME_KEY); } catch {}
+      if (d.resume) setD((state) => ({ ...state, resume: null }));
+      return;
+    }
+    const savedIds = Array.isArray(saved.queue?.ids) ? saved.queue.ids : [];
+    const ids = savedIds.filter((id) => id === track.id || T[id]?.url || T[id]?.file);
+    const queueIds = ids.includes(track.id) ? ids : [track.id, ...ids];
+    const queue = { ids: queueIds, i: Math.max(0, queueIds.indexOf(track.id)) };
+    const position = Math.max(0, Number(saved.position) || 0);
+    setCur(track);
+    setQ(queue);
+    setPos(position);
+    setDur(Number(saved.duration) || track.dur || 0);
+    setPlaying(false);
+    setNeedsResume(true);
+    E.cue(track, position, getBlob).then((ok) => {
+      if (ok === false) tl("Last song is unavailable on this device");
+    });
+  }, [d.resume, guest, localReady, ready, sharedId, user]);
   useEffect(() => {
     if (!user || !ready) return;
     const published = (d.playlists || []).filter((playlist) => playlist.isPublic && playlist.shareId);
@@ -1188,12 +1417,32 @@ export default function App() {
       if (!r.cur) return;
       if (!drag.current) setPos(E.pos());
       setDur(E.dur());
+      const now = Date.now();
+      if (now - resumeLocalSavedAt.current >= 5000) {
+        const snapshot = resumeSnapshot(r.cur, r.q, E.pos(), E.dur());
+        try { localStorage.setItem(RESUME_KEY, JSON.stringify(snapshot)); } catch {}
+        resumeLocalSavedAt.current = now;
+        if (r.user && r.ready && now - resumeCloudSavedAt.current >= 30000) {
+          setD((state) => ({ ...state, resume: snapshot }));
+          resumeCloudSavedAt.current = now;
+        }
+      }
       if (r.playing && E.ended() && !endedHandled.current) {
         endedHandled.current = true;
         r.next(true);
       }
-    }, 250);
+    }, 500);
     return () => clearInterval(h);
+  }, []);
+  useEffect(() => {
+    const saveCurrentPosition = () => {
+      const r = R.current;
+      if (!r.cur) return;
+      const snapshot = resumeSnapshot(r.cur, r.q, E.pos(), E.dur());
+      try { localStorage.setItem(RESUME_KEY, JSON.stringify(snapshot)); } catch {}
+    };
+    window.addEventListener("pagehide", saveCurrentPosition);
+    return () => window.removeEventListener("pagehide", saveCurrentPosition);
   }, []);
   useEffect(() => {
     const h = (e) => {
@@ -1510,7 +1759,7 @@ export default function App() {
 
   if (sharedId) return <SharedPlaylistView state={sharedView} />;
   if (user === undefined) return null;
-  if (!user && !guest) return <Auth onGuest={() => setGuest(true)} />;
+  if (!user && !guest) return <Auth initialError={authRedirectError} onGuest={() => setGuest(true)} />;
 
   /* views */
   const rows = (ids, key) =>
@@ -1568,8 +1817,16 @@ export default function App() {
       {user.displayName || (user.email || "").split("@")[0] || "account"}
     </button>
   ) : (
-    <button className="addm" onClick={() => fb.configured && setGuest(false)}>
-      {fb.configured ? "Log in / sign up" : "Guest mode"}
+    <button
+      className="addm"
+      onClick={() => {
+        E.stopAll();
+        setCur(null);
+        setPlaying(false);
+        setGuest(false);
+      }}
+    >
+      Log out
     </button>
   );
   const h = new Date().getHours(),
@@ -1714,17 +1971,6 @@ export default function App() {
     if (!shelf) return;
     shelf.scrollBy({ left: direction * shelf.clientWidth * 0.8, behavior: "smooth" });
   };
-  const artistPicks = (() => {
-    const seen = new Set();
-    return hm.shelves.flatMap((shelf) => shelf.ids).filter((id) => {
-      const track = T[id];
-      const artist = (track?.artist || "").trim();
-      const key = artist.toLowerCase();
-      if (!artist || key === "unknown" || key === "unknown artist" || seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    }).slice(0, 18).map((id) => ({ id, artist: T[id].artist }));
-  })();
   const ls = d.ls || "recents",
     lv = d.lv || "list",
     rpl = d.rp || [],
@@ -1761,6 +2007,85 @@ export default function App() {
             );
           })}
         </div>
+        {personalRecommendations.ids.length > 0 && (
+          <section className="personal-section" aria-label="Personalized recommendations">
+            <div className="hhead shelf-heading">
+              <h2>Picked for you</h2>
+              <span className="artist-note personal-note">
+                {personalRecommendations.reason
+                  ? `Based on your listening to ${personalRecommendations.reason}`
+                  : "Based on your likes and followed artists"}
+              </span>
+            </div>
+            <div className="shelf-wrap">
+              <button
+                type="button"
+                className="shelf-arrow shelf-arrow-left"
+                aria-label="Scroll recommendations left"
+                title="Scroll left"
+                onClick={(event) => scrollShelf(event, -1)}
+              >
+                ‹
+              </button>
+              <div className="shelf">
+                {personalRecommendations.ids.map((id) => tc(id, personalRecommendations.ids))}
+              </div>
+              <button
+                type="button"
+                className="shelf-arrow shelf-arrow-right"
+                aria-label="Scroll recommendations right"
+                title="Scroll right"
+                onClick={(event) => scrollShelf(event, 1)}
+              >
+                ›
+              </button>
+            </div>
+          </section>
+        )}
+        <section className="personal-section daily-mix-section" aria-label="Daily Mix">
+            <div className="hhead shelf-heading">
+              <div>
+                <h2>Daily Mix</h2>
+                <span className="artist-note personal-note">
+                  A daily blend of familiar songs and new matches
+                </span>
+              </div>
+              {personalRecommendations.dailyMixIds.length > 0 && (
+                <button
+                  type="button"
+                  className="daily-mix-play"
+                  onClick={() => play(personalRecommendations.dailyMixIds, personalRecommendations.dailyMixIds[0])}
+                >
+                  ▶ <span>Play mix</span>
+                </button>
+              )}
+            </div>
+            {personalRecommendations.dailyMixIds.length > 0 ? <div className="shelf-wrap">
+              <button
+                type="button"
+                className="shelf-arrow shelf-arrow-left"
+                aria-label="Scroll Daily Mix left"
+                title="Scroll left"
+                onClick={(event) => scrollShelf(event, -1)}
+              >
+                ‹
+              </button>
+              <div className="shelf">
+                {personalRecommendations.dailyMixIds.map((id) => tc(id, personalRecommendations.dailyMixIds))}
+              </div>
+              <button
+                type="button"
+                className="shelf-arrow shelf-arrow-right"
+                aria-label="Scroll Daily Mix right"
+                title="Scroll right"
+                onClick={(event) => scrollShelf(event, 1)}
+              >
+                ›
+              </button>
+            </div> : (
+              <p className="daily-mix-empty">Play or like a few songs and your mix will take shape around your listening.</p>
+            )}
+          </section>
         {artistPicks.length > 0 && (
           <section className="artist-section">
             <div className="hhead">
@@ -2462,6 +2787,18 @@ export default function App() {
             </div>
           </div>
           <div className="tr">
+            <a
+              className="android-download"
+              href={ANDROID_RELEASE_URL}
+              aria-label="Download Wavelength for Android"
+              title="Download for Android"
+            >
+              <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M12 3v12m0 0 5-5m-5 5-5-5" />
+                <path d="M5 16v4h14v-4" />
+              </svg>
+              <span>Download for Android</span>
+            </a>
             <button className="tl" onClick={() => nav("bollywood")}>
               ♫<span>Bollywood</span>
             </button>
@@ -2476,7 +2813,7 @@ export default function App() {
               title="Equalizer"
               onClick={toggleFx}
             >
-              🎚
+              <EqualizerIcon />
             </button>
             <button
               className={"ic" + (v.n === "hist" ? " on" : "")}
@@ -2499,25 +2836,34 @@ export default function App() {
                 <path d="M12 7v5l3 2" />
               </svg>
             </button>
-            {user && (
+            {(user || guest) && (
               <div className="sw">
-                <button className="av" onClick={() => setAcctOpen((o) => !o)}>
-                  {(uname || "?")[0].toUpperCase()}
+                <button className="av" onClick={() => setAcctOpen((o) => !o)} aria-label="Open profile menu">
+                  {user && profilePhoto ? <img src={profilePhoto} alt="" /> : (user ? (uname || "?")[0].toUpperCase() : "G")}
                 </button>
                 {acctOpen && (
                   <div className="smenu">
-                    <div className="sml">{uname}</div>
+                    <div className="profile-menu-head">
+                      <div className="profile-menu-photo">
+                        {user && profilePhoto ? <img src={profilePhoto} alt="" /> : (user ? (uname || "?")[0].toUpperCase() : "G")}
+                      </div>
+                      <div className="sml">{user ? uname : "Guest session"}</div>
+                    </div>
+                    {user && <button onClick={() => profileInput.current?.click()}>Change profile photo</button>}
+                    {user && d.profilePhoto && <button onClick={() => setD((state) => ({ ...state, profilePhoto: "" }))}>Remove custom photo</button>}
                     <button
                       onClick={() => {
                         setAcctOpen(false);
                         E.stopAll();
                         setCur(null);
                         setPlaying(false);
-                        fb.logout();
+                        if (user) fb.logout();
+                        else setGuest(false);
                       }}
                     >
                       Log out
                     </button>
+                    <input ref={profileInput} type="file" accept="image/*" onChange={saveProfilePhoto} hidden />
                   </div>
                 )}
               </div>
@@ -2548,8 +2894,9 @@ export default function App() {
                 </span>
                 <span className="t">Your Library</span>
               </button>
-              <button className="pill sm" onClick={() => fi.current.click()}>
-                ＋ Add music
+              <button className="pill sm" onClick={() => fi.current.click()} title="Add music" aria-label="Add music">
+                <span aria-hidden="true">＋</span>
+                <span className="add-music-label">Add music</span>
               </button>
               <button
                 className="ib xb"
@@ -2709,7 +3056,7 @@ export default function App() {
                 className={"ib eqb" + (v.n === "fx" ? " on" : "")}
                 onClick={toggleFx}
               >
-                🎚
+              <EqualizerIcon />
               </button>
               <button
                 className={"ib rpb" + (rep !== "off" ? " on" : "")}
@@ -2908,6 +3255,7 @@ export default function App() {
                 {rep === "one" ? "↻1" : "↻"}
               </button>
             </div>
+            <LyricsPanel track={cur} position={pos} />
             <h2 className="sh2">Sound</h2>
             {fxPanel()}
           </div>

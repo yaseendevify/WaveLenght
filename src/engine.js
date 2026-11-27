@@ -8,6 +8,7 @@ rmF.preload = "auto";
 rmF.crossOrigin = "anonymous";
 let rm = rmP,
   isRemote = false;
+let pendingPosition = 0;
 const fxBad = new Set();
 const GEN = {
   lofi: {
@@ -336,6 +337,7 @@ const stopF = () => {
 };
 export async function play(t, off, getBlob) {
   cur = t;
+  pendingPosition = off || 0;
   isRemote = !!t.url;
   ctxInit();
   ac.resume();
@@ -345,9 +347,28 @@ export async function play(t, off, getBlob) {
   if (isRemote) {
     const my = ++tok;
     const go = async (el) => {
-      if (el.src !== t.url) el.src = t.url;
+      if (el.src !== t.url) {
+        el.src = t.url;
+        el.load();
+      }
       el.volume = el === rmF ? 1 : vol;
-      el.currentTime = off || 0;
+      if (el.readyState < 1) {
+        await new Promise((resolve) => {
+          el.addEventListener("loadedmetadata", resolve, { once: true });
+          el.addEventListener("error", resolve, { once: true });
+        });
+      }
+      if (my !== tok) return;
+      const setOffset = () => {
+        try {
+          el.currentTime = off || 0;
+          pendingPosition = el.currentTime;
+        } catch (e) {
+          pendingPosition = off || 0;
+        }
+      };
+      if (el.readyState >= 1) setOffset();
+      else el.addEventListener("loadedmetadata", setOffset, { once: true });
       await el.play();
     };
     rmP.pause();
@@ -401,6 +422,53 @@ export async function play(t, off, getBlob) {
   fsrc = s;
   return true;
 }
+export async function cue(t, off, getBlob) {
+  cur = t;
+  pendingPosition = Math.max(0, Number(off) || 0);
+  isRemote = !!t.url;
+  isFile = !!t.file;
+  ctxInit();
+  stopSynth();
+  stopF();
+  rmP.pause();
+  rmF.pause();
+  if (isRemote) {
+    const el = rmF;
+    rm = el;
+    if (el.src !== t.url) {
+      el.src = t.url;
+      el.load();
+    }
+    const setOffset = () => {
+      try {
+        el.currentTime = pendingPosition;
+        pendingPosition = el.currentTime;
+      } catch (e) {}
+    };
+    if (el.readyState >= 1) setOffset();
+    else el.addEventListener("loadedmetadata", setOffset, { once: true });
+    return true;
+  }
+  if (!isFile) {
+    songStart = ac.currentTime - pendingPosition;
+    return true;
+  }
+  const my = ++tok;
+  try {
+    if (fid !== t.id) {
+      fbuf = null;
+      const blob = await getBlob(t.id);
+      const decoded = await ac.decodeAudioData(await blob.arrayBuffer());
+      if (my !== tok) return null;
+      fbuf = decoded;
+      fid = t.id;
+    }
+  } catch (e) {
+    return false;
+  }
+  songStart = ac.currentTime - pendingPosition;
+  return true;
+}
 export const pause = () => {
   rmP.pause();
   rmF.pause();
@@ -412,7 +480,7 @@ export const resume = () => {
 };
 export const pos = () =>
   isRemote
-    ? rm.currentTime
+    ? rm.readyState >= 1 ? rm.currentTime : pendingPosition
     : cur && ac
       ? Math.max(0, ac.currentTime - songStart)
       : 0;

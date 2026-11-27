@@ -1,0 +1,25 @@
+{
+  "id": "/",
+  "name": "Wavelength Music",
+  "short_name": "Wavelength",
+  "description": "Stream music and manage your Wavelength library.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#111116",
+  "theme_color": "#111116",
+  "icons": [
+    {
+      "src": "/icons/wavelength-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/wavelength-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

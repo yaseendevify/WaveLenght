@@ -1,0 +1,102 @@
+plugins {
+    id 'com.android.application'
+}
+
+def releaseSigningFile = rootProject.file('release-signing.properties')
+def releaseSigningProperties = new Properties()
+if (releaseSigningFile.exists()) {
+    releaseSigningFile.withInputStream { releaseSigningProperties.load(it) }
+}
+
+android {
+    compileSdkVersion 36
+    buildToolsVersion "36.0.0"
+    namespace "com.wavelength.music"
+
+    def webEnv = [:]
+    def webEnvFile = rootProject.file('../.env')
+    if (webEnvFile.exists()) {
+        webEnvFile.eachLine { line ->
+            def match = line =~ /^\s*([A-Za-z0-9_]+)\s*=\s*(.*)\s*$/
+            if (match.matches()) webEnv[match[0][1]] = match[0][2].trim().replaceAll(/^["']|["']$/, '')
+        }
+    }
+
+    defaultConfig {
+        applicationId "com.wavelength.music.native"
+        minSdkVersion 24
+        targetSdkVersion 36
+        versionCode 5
+        versionName "5"
+        resValue "string", "launcherName", "Wavelength"
+        buildConfigField "String", "FIREBASE_API_KEY", '"' + (webEnv['VITE_FIREBASE_API_KEY'] ?: '') + '"'
+        buildConfigField "String", "FIREBASE_PROJECT_ID", '"' + (webEnv['VITE_FIREBASE_PROJECT_ID'] ?: '') + '"'
+        buildConfigField "String", "JAMENDO_CLIENT_ID", '"' + (webEnv['VITE_JAMENDO_CLIENT_ID'] ?: '') + '"'
+        buildConfigField "String", "GOOGLE_WEB_CLIENT_ID", '"470266002335-8bg3rjfo1pufhonf4jvui4h1d7v6rgmo.apps.googleusercontent.com"'
+    }
+
+    flavorDimensions "distribution"
+    productFlavors {
+        standalone {
+            dimension "distribution"
+        }
+    }
+
+    if (releaseSigningFile.exists()) {
+        signingConfigs {
+            release {
+                storeFile rootProject.file(releaseSigningProperties.getProperty('storeFile'))
+                storePassword releaseSigningProperties.getProperty('storePassword')
+                keyAlias releaseSigningProperties.getProperty('keyAlias')
+                keyPassword releaseSigningProperties.getProperty('keyPassword')
+            }
+        }
+    }
+
+    buildTypes {
+        debug {
+            applicationIdSuffix ".debug"
+        }
+        release {
+            minifyEnabled false
+            if (releaseSigningFile.exists()) {
+                signingConfig signingConfigs.release
+            }
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+    buildFeatures { buildConfig true }
+}
+
+tasks.register('verifyStandaloneReleaseSigning') {
+    doLast {
+        if (!releaseSigningFile.exists()) {
+            throw new GradleException('Missing android/release-signing.properties; copy the example and fill it locally.')
+        }
+        ['storeFile', 'storePassword', 'keyAlias', 'keyPassword'].each { key ->
+            if (!releaseSigningProperties.getProperty(key)) {
+                throw new GradleException("Missing ${key} in android/release-signing.properties.")
+            }
+        }
+        if (!rootProject.file(releaseSigningProperties.getProperty('storeFile')).exists()) {
+            throw new GradleException('The Android signing keystore configured for the release build was not found.')
+        }
+    }
+}
+
+tasks.configureEach {
+    if (name == 'assembleStandaloneRelease') {
+        dependsOn tasks.named('verifyStandaloneReleaseSigning')
+    }
+}
+
+dependencies {
+    implementation fileTree(include: ['*.jar'], dir: 'libs')
+    implementation 'androidx.credentials:credentials:1.3.0'
+    implementation 'androidx.credentials:credentials-play-services-auth:1.3.0'
+    implementation 'com.google.android.libraries.identity.googleid:googleid:1.1.1'
+}

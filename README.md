@@ -9,6 +9,14 @@ cp .env.example .env     # then fill in the 4 values
 npm run dev
 ```
 
+## Mac desktop app
+
+The standalone Mac app bundles the Wavelength interface and opens its own window without requiring Chrome. Music catalogs, Firebase sync, and streaming still need an internet connection. Google sign-in opens the system browser briefly, then returns to the app.
+
+On a Mac, run `npm install` and `npm run desktop:package` to create a DMG in `dist/desktop`. For local development, run `npm run dev` and `npm run desktop:dev` in separate terminal windows.
+
+The first-party DMG is not signed or notarized with an Apple Developer ID, so macOS may ask you to confirm opening it.
+
 ## Firebase setup (once)
 1. Firebase console → your project → Project settings → Your apps → Web app. Copy `apiKey`, `authDomain`, `projectId`, `appId` into `.env`.
 2. Authentication → Sign-in method: enable **Email/Password** and **Google**.
