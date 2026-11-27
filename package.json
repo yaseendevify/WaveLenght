@@ -9,7 +9,9 @@
     "preview": "vite preview",
     "desktop:app": "electron .",
     "desktop:dev": "WAVELENGTH_DEV_URL=http://localhost:5173 electron .",
-    "desktop:package": "bash scripts/package-mac-dmg.sh"
+    "desktop:package": "bash scripts/package-mac-dmg.sh",
+    "android:build": "cd android && ./gradlew assembleStandaloneRelease",
+    "android:debug": "cd android && ./gradlew assembleStandaloneDebug"
   },
   "dependencies": {
     "firebase": "^10.14.1",

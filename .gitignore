@@ -4,4 +4,13 @@ dist
 .local-certs/
 .firebase/
 
+# Keep Android signing material and local build output off GitHub.
+/android/*.keystore
+/android/release-signing.properties
+/android/local.properties
+/android/.gradle/
+/android/app/build/
+/android/app-release-*.apk*
+/android/app-release-*.aab
+
 build/
