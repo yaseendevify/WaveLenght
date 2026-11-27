@@ -1,5 +1,5 @@
 # Copy to release-signing.properties and fill values locally. Never commit the copy.
-storeFile=android.keystore
+storeFile=wavelength-native-release.keystore
 storePassword=
-keyAlias=wavelength
+keyAlias=wavelength-native
 keyPassword=

@@ -23,7 +23,7 @@ android {
     }
 
     defaultConfig {
-        applicationId "com.wavelength.music"
+        applicationId "com.wavelength.music.native"
         minSdkVersion 24
         targetSdkVersion 36
         versionCode 5

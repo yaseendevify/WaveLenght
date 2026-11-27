@@ -14,7 +14,7 @@ The debug package uses `com.wavelength.music.debug` so it can be installed besid
 
 ## Signed release build
 
-Use the same signing keystore as the existing Android release. Copy `release-signing.properties.example` to `release-signing.properties`, then fill in the keystore path, store password, alias, and key password locally. The `.gitignore` excludes the completed file.
+This native app uses a separate application ID (`com.wavelength.music.native`) from the existing web TWA, so it installs as its own app. It also needs its own release keystore. Keep the keystore and `release-signing.properties` backed up privately; neither belongs in Git. Copy `release-signing.properties.example` to `release-signing.properties` and fill in the local password values.
 
 Build the signed APK with:
 
