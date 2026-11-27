@@ -16,6 +16,7 @@ GL.audius = "Audius";
 GL.saavn = "JioSaavn";
 GL.gaana = "Gaana";
 const JKEY = import.meta.env.VITE_JAMENDO_CLIENT_ID;
+const ANDROID_RELEASE_URL = "https://raw.githubusercontent.com/yaseendevify/WaveLenght/a888ba6d65f73f8fa39642b951444af5d4b2880a/downloads/Wavelength-Native-Android.apk";
 const TAGS = [
   "lofi",
   "electronic",
@@ -2786,6 +2787,18 @@ export default function App() {
             </div>
           </div>
           <div className="tr">
+            <a
+              className="android-download"
+              href={ANDROID_RELEASE_URL}
+              aria-label="Download Wavelength for Android"
+              title="Download for Android"
+            >
+              <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M12 3v12m0 0 5-5m-5 5-5-5" />
+                <path d="M5 16v4h14v-4" />
+              </svg>
+              <span>Download for Android</span>
+            </a>
             <button className="tl" onClick={() => nav("bollywood")}>
               ♫<span>Bollywood</span>
             </button>
